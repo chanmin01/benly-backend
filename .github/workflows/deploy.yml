@@ -38,15 +38,45 @@ jobs:
           docker build --platform linux/amd64 -t $IMAGE .
           docker push $IMAGE
 
-      - name: EC2에 배포
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com
-            docker pull 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest
-            docker stop benly || true
-            docker rm benly || true
-            docker run -d -p 8080:8080 --name benly 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest
+      - name: EC2에 배포 (SSM)
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy benly-backend" \
+            --parameters '{"commands":[
+              "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com",
+              "docker pull 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest",
+              "docker stop benly || true",
+              "docker rm benly || true",
+              "docker run -d -p 8080:8080 --name benly 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest"
+            ]}' \
+            --region ap-northeast-2 \
+            --query "Command.CommandId" --output text)
+
+          echo "Command sent: $COMMAND_ID. Waiting for completion..."
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --region ap-northeast-2 || true
+
+          echo "===== Execution Result ====="
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --region ap-northeast-2 \
+            --query "{Status:Status, Output:StandardOutputContent, Error:StandardErrorContent}" \
+            --output json
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --region ap-northeast-2 \
+            --query "Status" --output text)
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "Deploy failed with status: $STATUS"
+            exit 1
+          fi
+          echo "Deploy succeeded"
