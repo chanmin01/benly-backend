@@ -50,7 +50,9 @@ jobs:
               "docker stop benly || true",
               "docker rm benly || true",
               "JWT_SECRET=$(aws ssm get-parameter --name /benly/prod/jwt-secret --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
-              "docker run -d -p 8080:8080 --name benly -e JWT_SECRET=\"$JWT_SECRET\" 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest"
+              "DB_URL=$(aws ssm get-parameter --name /benly/prod/db-url --query Parameter.Value --output text --region ap-northeast-2)",
+              "DB_PASSWORD=$(aws ssm get-parameter --name /benly/prod/db-password --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
+              "docker run -d -p 8080:8080 --name benly -e JWT_SECRET=\"$JWT_SECRET\" -e DB_URL=\"$DB_URL\" -e DB_PASSWORD=\"$DB_PASSWORD\" 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest"
             ]}' \
             --region ap-northeast-2 \
             --query "Command.CommandId" --output text)
