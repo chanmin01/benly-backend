@@ -1,5 +1,6 @@
-package com.benly.global.exception;
+package com.benly.auth.exception;
 
+import com.benly.global.exception.ErrorCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
