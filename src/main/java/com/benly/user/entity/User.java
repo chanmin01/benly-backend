@@ -1,0 +1,29 @@
+package com.benly.user.entity;
+
+import com.benly.global.entity.BaseEntity;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Getter
+@Table(name = "users")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class User extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "kakao_id", nullable = false, unique = true, length = 255)
+    private String kakaoId;
+
+    @Column(name = "nickname", nullable = false, length = 50)
+    private String nickname;
+
+    @Column(name = "terms_agreed_at", nullable = false)
+    private LocalDateTime termsAgreedAt;
+}
