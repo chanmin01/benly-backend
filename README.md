@@ -76,8 +76,6 @@ feat: 카카오 로그인 API 구현
 - 인가코드로 kakao_id 조회
 - 신규 유저면 자동 회원가입
 - JWT access/refresh 발급
- 
-Closes #12
 ```
  
 - `Closes #12` — 머지되면 해당 이슈 자동 종료
