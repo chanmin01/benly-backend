@@ -1,5 +1,5 @@
 ---
-name: 이슈
+name: 이슈 등록
 about: 작업할 내용이나 발견한 문제를 등록합니다
 title: ''
 labels: ''
