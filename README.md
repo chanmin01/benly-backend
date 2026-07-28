@@ -15,9 +15,9 @@
 예시:
  
 ```
-feat/12-kakao-login
-fix/23-refresh-token-null
-refactor/30-session-service
+feat/#12-kakao-login
+fix/#23-refresh-token-null
+refactor/#30-session-service
 ```
  
 ### 규칙
@@ -39,9 +39,9 @@ refactor/30-session-service
 ```bash
 git checkout develop
 git pull origin develop
-git checkout -b feat/12-kakao-login   # 새 브랜치 생성 + 이동
+git checkout -b feat/#12-kakao-login   # 새 브랜치 생성 + 이동
 # ...작업...
-git push origin feat/12-kakao-login   # 원격에 올리고 PR 생성
+git push origin feat/#12-kakao-login   # 원격에 올리고 PR 생성
 ```
  
 ---
