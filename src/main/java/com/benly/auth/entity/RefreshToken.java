@@ -1,8 +1,7 @@
 package com.benly.auth.entity;
 
 import com.benly.global.entity.BaseEntity;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,4 +11,8 @@ import lombok.NoArgsConstructor;
 @Table(name = "refresh_tokens")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RefreshToken extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 }
