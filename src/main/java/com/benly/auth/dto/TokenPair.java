@@ -1,4 +1,7 @@
 package com.benly.auth.dto;
 
-public class TokenPair {
+public record TokenPair(
+        String accessToken,
+        String refreshToken
+) {
 }
