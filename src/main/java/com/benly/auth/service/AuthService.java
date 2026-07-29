@@ -60,4 +60,24 @@ public class AuthService {
 
         return new TokenPair(accessToken, refreshToken);
     }
+
+    @Transactional
+    public TokenPair reissue(String refreshToken) {
+        if (!jwtProvider.isValid(refreshToken)) {
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+        }
+
+        RefreshToken saved = refreshTokenRepository.findByRefreshToken(refreshToken)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        User user = saved.getUser();
+        refreshTokenRepository.delete(saved);
+
+        return issueAndSaveTokens(user);
+    }
+
+    @Transactional
+    public void logout(Long userId) {
+        refreshTokenRepository.deleteByUserId(userId);
+    }
 }
