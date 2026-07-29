@@ -4,11 +4,13 @@ import com.benly.auth.client.dto.KakaoTokenResponse;
 import com.benly.auth.client.dto.KakaoUserResponse;
 import com.benly.auth.exception.AuthErrorCode;
 import com.benly.global.exception.BusinessException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+@Slf4j
 @Component
 public class KakaoOAuthClientImpl implements KakaoOAuthClient {
 
@@ -23,7 +25,7 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
             @Value("${kakao.client-id}") String clientId,
             @Value("${kakao.redirect-uri}") String redirectUri,
             @Value("${kakao.token-uri}") String tokenUri,
-            @Value("{kakao.user-info-uri}") String userInfoUri
+            @Value("${kakao.user-info-uri}") String userInfoUri
     ) {
         this.restClient = restClient;
         this.clientId = clientId;
