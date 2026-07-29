@@ -46,6 +46,7 @@ public class AuthService {
         if (!Boolean.TRUE.equals(termsAgreed)) {
             throw new BusinessException(AuthErrorCode.TERMS_NOT_AGREED);
         }
+        // TODO: 카카오 프로필 닉네임 반영 (현재 하드코딩)
         User user = User.of(kakaoId, "카카오사용자");
         return userRepository.save(user);
     }

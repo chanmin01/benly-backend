@@ -45,6 +45,7 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
         }
     }
 
+    // TODO: Client Secret 적용 (현재 카카오 콘솔에서 비활성화 상태)
     private String requestAccessToken(String authorizationCode) {
         KakaoTokenResponse response = restClient.post()
                 .uri(tokenUri)
@@ -62,6 +63,7 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
     private KakaoUserResponse requestKakaoUser(String accessToken) {
         return restClient.get()
                 .uri(userInfoUri)
+                // TODO: JWT 필터 도입 후 SecurityContext에서 userId 추출로 변경
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
                 .body(KakaoUserResponse.class);
