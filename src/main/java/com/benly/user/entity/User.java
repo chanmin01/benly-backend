@@ -26,4 +26,14 @@ public class User extends BaseEntity {
 
     @Column(name = "terms_agreed_at", nullable = false)
     private LocalDateTime termsAgreedAt;
+
+    private User(String kakaoId, String nickname) {
+        this.kakaoId = kakaoId;
+        this.nickname = nickname;
+        this.termsAgreedAt = LocalDateTime.now();
+    }
+
+    public static User of(String kakaoId, String nickname) {
+        return new User(kakaoId, nickname);
+    }
 }
