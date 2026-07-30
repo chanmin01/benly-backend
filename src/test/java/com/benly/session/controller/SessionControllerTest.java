@@ -51,7 +51,7 @@ public class SessionControllerTest {
                         .param("userId", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.sessionId").value(101))
                 .andExpect(jsonPath("$.data.status").value("GENERATING"))
