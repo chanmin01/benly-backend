@@ -2,12 +2,14 @@ package com.benly.session.service;
 
 import com.benly.document.entity.Document;
 import com.benly.document.exception.DocumentErrorCode;
+import com.benly.document.repository.DocumentRepository;
 import com.benly.global.exception.BusinessException;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.entity.Session;
 import com.benly.session.repository.SessionRepository;
 import com.benly.user.entity.User;
+import com.benly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
