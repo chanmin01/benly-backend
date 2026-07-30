@@ -30,7 +30,7 @@ class DocumentControllerTest {
 
 
     @Test
-    @DisplayName("서류 목록 조 - 성공")
+    @DisplayName("서류 목록 조회 - 성공")
     void getDocument_success() throws Exception {
         //given
         List<DocumentResponse> fakeList = List.of(
