@@ -18,7 +18,7 @@ public class InterviewOptionController {
     @GetMapping("/interview-options")
     public ApiResponse<InterviewOptionResponse> getOptions(){
         InterviewOptionResponse data = interviewOptionService.getOptions();
-        return ApiResponse.success("설정 선택지를 조회했습니다." ,data);
+        return ApiResponse.success("설정 선택지를 조회했습니다.",data);
 
     }
 }
