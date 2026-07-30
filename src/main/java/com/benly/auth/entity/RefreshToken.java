@@ -27,4 +27,15 @@ public class RefreshToken extends BaseTimeEntity {
 
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
+
+    private RefreshToken(User user, String refreshToken, LocalDateTime expiresAt) {
+        this.user = user;
+        this.refreshToken = refreshToken;
+        this.expiresAt = expiresAt;
+    }
+
+    public static RefreshToken of(User user, String refreshToken, LocalDateTime expiresAt) {
+        return new RefreshToken(user, refreshToken, expiresAt);
+    }
+
 }

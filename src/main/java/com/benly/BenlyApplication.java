@@ -6,8 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class BenlyApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(BenlyApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(BenlyApplication.class, args);
+    }
 
 }
