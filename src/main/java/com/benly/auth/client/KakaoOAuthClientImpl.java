@@ -6,7 +6,10 @@ import com.benly.auth.exception.AuthErrorCode;
 import com.benly.global.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -39,6 +42,9 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
         try {
             String accessToken = requestAccessToken(authorizationCode);
             KakaoUserResponse user = requestKakaoUser(accessToken);
+            if (user == null || user.id() == null) {
+                throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
+            }
             return String.valueOf(user.id());
         } catch (RestClientException e) {
             throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
@@ -47,15 +53,22 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
 
     // TODO: Client Secret 적용 (현재 카카오 콘솔에서 비활성화 상태)
     private String requestAccessToken(String authorizationCode) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "authorization_code");
+        form.add("client_id", clientId);
+        form.add("redirect_uri", redirectUri);
+        form.add("code", authorizationCode);
+
         KakaoTokenResponse response = restClient.post()
                 .uri(tokenUri)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body("grant_type=authorization_code"
-                        + "&client_id=" + clientId
-                        + "&redirect_uri=" + redirectUri
-                        + "&code=" + authorizationCode)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(form)
                 .retrieve()
                 .body(KakaoTokenResponse.class);
+
+        if (response == null || response.accessToken() == null) {
+            throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
+        }
 
         return response.accessToken();
     }
