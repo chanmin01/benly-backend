@@ -23,6 +23,7 @@ public class SessionService {
     private final UserRepository userRepository; // 여기 부분은 user 담당자가 repository를 만들면 적용
     private final DocumentRepository documentRepository;
 
+    @Transactional
     public SessionCreateResponse createSession(Long userId, SessionCreateRequest sessionCreateRequest) {
         // 1. 유저 조회
         User user = userRepository.findById(userId) // 여기도 만든 메스뎅 따라서 추후에 변경 예정
@@ -51,7 +52,7 @@ public class SessionService {
 
     // 소유권 검증 메서드
     private void validateDocumentOwnerShip(Long docId, Long userId) {
-        Document document = documentRepository.findById(docId)
+        Document document = documentRepository.findByIdAndDeletedAtIsNull(docId)
                 .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
         if (!document.getUser().getId().equals(userId)) {
             throw new BusinessException(DocumentErrorCode.DOCUMENT_FORBIDDEN);

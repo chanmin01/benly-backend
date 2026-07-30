@@ -6,6 +6,7 @@ import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.service.SessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -16,6 +17,7 @@ public class SessionController {
     private final SessionService sessionService;
 
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SessionCreateResponse> createSession(
             @RequestParam Long userId, // TODO: 인증 완성 후 @AuthenticationPrincipal로
             @Valid @RequestBody SessionCreateRequest sessionCreateRequest) {
