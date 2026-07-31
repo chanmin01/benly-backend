@@ -3,7 +3,9 @@ package com.benly.global.exception;
 import com.benly.global.common.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -25,6 +27,22 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()
                 ));
 
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException e, HttpServletRequest request) {
+
+        // DTO에 작성한 Validation 메시지 중 첫 번째를 가져옵니다.
+        String errorMessage = e.getBindingResult().getAllErrors().get(0).getDefaultMessage();
+        log.warn("ValidationException: {}", errorMessage);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(
+                        HttpStatus.BAD_REQUEST.value(), // 400
+                        errorMessage,
+                        request.getRequestURI()
+                ));
     }
 
     @ExceptionHandler(Exception.class)
