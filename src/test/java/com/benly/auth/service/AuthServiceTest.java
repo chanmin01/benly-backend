@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -50,7 +51,6 @@ public class AuthServiceTest {
         // given
         given(kakaoOAuthClient.getKakaoUser("code"))
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
-        given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
         given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
                 .willReturn(User.of("12345", "홍길동"));
@@ -76,7 +76,6 @@ public class AuthServiceTest {
         // given
         given(kakaoOAuthClient.getKakaoUser("code"))
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
-        given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
         given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
                 .willThrow(new BusinessException(AuthErrorCode.TERMS_NOT_AGREED));
@@ -87,5 +86,28 @@ public class AuthServiceTest {
         assertThatThrownBy(() -> authService.kakaoLogin(request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.TERMS_NOT_AGREED);
+    }
+
+    @Test
+    @DisplayName("동시 가입 충돌 시 기존 유저로 복구하고 isNewUser는 false다")
+    void concurrentRegisterFallsBackToExisting() {
+        // given
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
+        // 첫 조회: 없음(신규처럼 진입) → 저장 실패 후 재조회: 있음(기존 복구)
+        given(userRepository.findByKakaoId("12345"))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(User.of("12345", "홍길동")));
+        given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
+                .willThrow(new DataIntegrityViolationException("duplicate kakao_id"));
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
+        given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
+
+        // when
+        KakaoLoginResponse response = authService.kakaoLogin(new KakaoLoginRequest("code", true));
+
+        // then
+        assertThat(response.isNewUser()).isFalse();
     }
 }
