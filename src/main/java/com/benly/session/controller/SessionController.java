@@ -29,6 +29,6 @@ public class SessionController {
         // 2. DB 커밋이 확실하게 보장된 상태에서 비동기 메서드 호출
         questionGenerationService.generate(data.sessionId(), sessionCreateRequest.jobDescription());
 
-        return ApiResponse.success("면접관이 면접을 준비하고 있어.", data);
+        return ApiResponse.success("면접관이 면접을 준비하고 있어요.", data);
     }
 }

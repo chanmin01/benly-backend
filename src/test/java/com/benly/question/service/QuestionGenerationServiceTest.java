@@ -75,7 +75,7 @@ class QuestionGenerationServiceTest {
         SeedQuestion seed2 = mockSeed("시드질문2");
         SeedQuestion seed3 = mockSeed("시드질문3");
 
-        given(seedQuestionRepository.findByCompanyTypeAndStage(any(), any()))
+        given(seedQuestionRepository.findTop5ByCompanyTypeAndStage(any(), any()))
                 .willReturn(List.of(seed1, seed2, seed3));
 
         // when

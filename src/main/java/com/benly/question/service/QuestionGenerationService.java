@@ -27,27 +27,32 @@ public class QuestionGenerationService {
     @Async
     @Transactional
     public void generate(Long sessionId, String jd) {
-        Session session = sessionRepository.findById(sessionId).orElse(null);
+        Session session = sessionRepository.findById(sessionId).orElseThrow(
+                () -> new IllegalArgumentException("해당 세션을 찾을 수 없습니다. ID: " + sessionId));
 
-        List<String> questionTexts;
-        QuestionSourceType sourceType;
+        try {
+            List<String> questionTexts;
+            QuestionSourceType sourceType;
 
-        try{
-            questionTexts = claudeClient.generateQuestions(
-                    session.getCompanyType(), session.getStage(), session.getJobTitle(), jd);
-            sourceType = QuestionSourceType.CLAUDE;
-        } catch (Exception e){
+            try {
+                questionTexts = claudeClient.generateQuestions(
+                        session.getCompanyType(), session.getStage(), session.getJobTitle(), jd);
+                sourceType = QuestionSourceType.CLAUDE;
+            } catch (Exception e) {
+                List<SeedQuestion> seeds = seedQuestionRepository.findTop5ByCompanyTypeAndStage(session.getCompanyType(), session.getStage());
+                questionTexts = seeds.stream().map(SeedQuestion::getContent).toList();
+                sourceType = QuestionSourceType.SEED_FALLBACK;
+            }
 
-            List<SeedQuestion> seeds = seedQuestionRepository.findByCompanyTypeAndStage(session.getCompanyType(), session.getStage());
-            questionTexts = seeds.stream().map(SeedQuestion::getContent).toList();
-            sourceType = QuestionSourceType.SEED_FALLBACK;
+            int seq = 1;
+            for (String text : questionTexts) {
+                Question question = Question.createMain(session, seq++, text, sourceType);
+                questionRepository.save(question);
+            }
+            session.markReady();
+
+        } catch (Exception e) {
+            session.markFailed();
         }
-
-        int seq = 1;
-        for (String text : questionTexts) {
-            Question question = Question.createMain(session, seq++, text, sourceType);
-            questionRepository.save(question);
-        }
-        session.markReady();
     }
 }

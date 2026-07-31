@@ -4,10 +4,6 @@ import com.benly.document.entity.Document;
 import com.benly.document.exception.DocumentErrorCode;
 import com.benly.document.repository.DocumentRepository;
 import com.benly.global.exception.BusinessException;
-import com.benly.question.entity.Question;
-import com.benly.question.entity.SeedQuestion;
-import com.benly.question.repository.QuestionRepository;
-import com.benly.question.repository.SeedQuestionRepository;
 import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
@@ -18,8 +14,6 @@ import com.benly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 
 @Service

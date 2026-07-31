@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface SeedQuestionRepository extends JpaRepository<SeedQuestion, Long> {
 
-    List<SeedQuestion> findByCompanyTypeAndStage(String companyType, String stage);
+    List<SeedQuestion> findTop5ByCompanyTypeAndStage(String companyType, String stage);
 }
