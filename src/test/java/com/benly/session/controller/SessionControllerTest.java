@@ -1,6 +1,7 @@
 package com.benly.session.controller;
 
 
+import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.service.SessionService;
@@ -31,6 +32,9 @@ public class SessionControllerTest {
 
     @MockitoBean
     private SessionService sessionService;
+
+    @MockitoBean
+    private QuestionGenerationService questionGenerationService;
 
     @Test
     @DisplayName("세션 생성 - 성공")

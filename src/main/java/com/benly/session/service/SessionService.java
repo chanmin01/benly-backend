@@ -4,6 +4,7 @@ import com.benly.document.entity.Document;
 import com.benly.document.exception.DocumentErrorCode;
 import com.benly.document.repository.DocumentRepository;
 import com.benly.global.exception.BusinessException;
+import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.entity.Session;
@@ -22,6 +23,7 @@ public class SessionService {
     private final SessionRepository sessionRepository;
     private final UserRepository userRepository; // 여기 부분은 user 담당자가 repository를 만들면 적용
     private final DocumentRepository documentRepository;
+    private final QuestionGenerationService questionGenerationService;
 
     @Transactional
     public SessionCreateResponse createSession(Long userId, SessionCreateRequest sessionCreateRequest) {
@@ -43,12 +45,10 @@ public class SessionService {
         );
         Session saved =  sessionRepository.save(session);
 
-        // 4. TODO: 비동기로 질문 생성 시작
 
         // 5. 응답
         return SessionCreateResponse.from(saved.getId(), saved.getStatus());
     }
-
 
     // 소유권 검증 메서드
     private void validateDocumentOwnerShip(Long docId, Long userId) {

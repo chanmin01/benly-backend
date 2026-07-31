@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.web.bind.support.SessionStatus;
 
 @Entity
 @Getter
@@ -47,5 +48,13 @@ public class Session extends BaseEntity {
 
     public static Session create(User user, String companyType, String stage, String jobTitle, String companyName) {
         return new Session(user, companyType, stage, jobTitle, companyName, "GENERATING");
+    }
+
+    public void markReady(){
+        this.status = "READY";
+    }
+
+    public void markFailed() {
+        this.status = "FAILED";
     }
 }
