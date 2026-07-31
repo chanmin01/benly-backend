@@ -52,10 +52,6 @@ public class SessionService {
         Session saved =  sessionRepository.save(session);
 
 
-
-        // 4. 질문생성
-        questionGenerationService.generate(saved.getId(), sessionCreateRequest.jobDescription());
-
         // 5. 응답
         return SessionCreateResponse.from(saved.getId(), saved.getStatus());
     }

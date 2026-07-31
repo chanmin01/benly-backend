@@ -37,6 +37,7 @@ public class QuestionGenerationService {
                     session.getCompanyType(), session.getStage(), session.getJobTitle(), jd);
             sourceType = QuestionSourceType.CLAUDE;
         } catch (Exception e){
+
             List<SeedQuestion> seeds = seedQuestionRepository.findByCompanyTypeAndStage(session.getCompanyType(), session.getStage());
             questionTexts = seeds.stream().map(SeedQuestion::getContent).toList();
             sourceType = QuestionSourceType.SEED_FALLBACK;
