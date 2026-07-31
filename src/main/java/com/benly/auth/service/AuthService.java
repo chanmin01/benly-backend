@@ -42,8 +42,15 @@ public class AuthService {
 
     private UserResolution findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         return userRepository.findByKakaoId(kakaoUser.kakaoId())
-                .map(user -> new UserResolution(user, false))
+                .map(this::resolveExisting)
                 .orElseGet(() -> registerOrFindExisting(kakaoUser, termsAgreed));
+    }
+
+    private UserResolution resolveExisting(User user) {
+        if (user.isDeleted()) {
+            user.restore();
+        }
+        return new UserResolution(user, false);
     }
 
     private UserResolution registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
@@ -56,7 +63,6 @@ public class AuthService {
             return new UserResolution(existing, false);
         }
     }
-
 
     @Transactional
     public TokenPair reissue(String refreshToken) {
