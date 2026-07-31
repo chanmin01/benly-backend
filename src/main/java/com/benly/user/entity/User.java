@@ -36,4 +36,8 @@ public class User extends BaseEntity {
     public static User of(String kakaoId, String nickname) {
         return new User(kakaoId, nickname);
     }
+
+    public void changeNickname(String nickname) {
+        this.nickname = nickname;
+    }
 }
