@@ -13,6 +13,7 @@ import com.benly.global.exception.BusinessException;
 import com.benly.user.entity.User;
 import com.benly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,12 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AuthService {
 
-    private static final String DEFAULT_NICKNAME = "카카오사용자";
-
     private final KakaoOAuthClient kakaoOAuthClient;
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtProvider jwtProvider;
+    private final UserRegistrationService userRegistrationService;
 
     @Transactional
     public KakaoLoginResponse kakaoLogin(KakaoLoginRequest request) {
@@ -42,23 +42,16 @@ public class AuthService {
 
     private User findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         return userRepository.findByKakaoId(kakaoUser.kakaoId())
-                .orElseGet(() -> register(kakaoUser, termsAgreed));
+                .orElseGet(() -> registerOrFindExisting(kakaoUser, termsAgreed));
     }
 
-    private User register(KakaoUserInfo kakaoUser, boolean termsAgreed) {
-        if (!Boolean.TRUE.equals(termsAgreed)) {
-            throw new BusinessException(AuthErrorCode.TERMS_NOT_AGREED);
+    private User registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+        try {
+            return userRegistrationService.register(kakaoUser, termsAgreed);
+        } catch (DataIntegrityViolationException e) {
+            return userRepository.findByKakaoId(kakaoUser.kakaoId())
+                    .orElseThrow(() -> new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED));
         }
-        String nickname = resolveNickname(kakaoUser.nickname());
-        User user = User.of(kakaoUser.kakaoId(), nickname);
-        return userRepository.save(user);
-    }
-
-    private String resolveNickname(String nickname) {
-        if (nickname == null || nickname.isBlank()) {
-            return DEFAULT_NICKNAME;
-        }
-        return nickname.length() > 50 ? nickname.substring(0, 50) : nickname;
     }
 
     private TokenPair issueAndSaveTokens(User user) {

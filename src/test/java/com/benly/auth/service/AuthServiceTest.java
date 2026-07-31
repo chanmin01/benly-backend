@@ -13,7 +13,6 @@ import com.benly.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,8 +23,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
 
 
 @ExtendWith(MockitoExtension.class)
@@ -39,6 +38,8 @@ public class AuthServiceTest {
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private JwtProvider jwtProvider;
+    @Mock
+    private UserRegistrationService userRegistrationService;
 
     @InjectMocks
     private AuthService authService;
@@ -51,12 +52,10 @@ public class AuthServiceTest {
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
-        given(userRepository.save(any(User.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(jwtProvider.createAccessToken(any()))
-                .willReturn("access-token");
-        given(jwtProvider.createRefreshToken(any()))
-                .willReturn("refresh-token");
+        given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
+                .willReturn(User.of("12345", "홍길동"));
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry())
                 .willReturn(LocalDateTime.now().plusWeeks(2));
 
@@ -69,10 +68,6 @@ public class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(response.refreshToken()).isEqualTo("refresh-token");
         assertThat(response.isNewUser()).isTrue();
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        then(userRepository).should().save(userCaptor.capture());
-        assertThat(userCaptor.getValue().getNickname()).isEqualTo("홍길동");
     }
 
     @Test
@@ -83,6 +78,8 @@ public class AuthServiceTest {
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
+        given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
+                .willThrow(new BusinessException(AuthErrorCode.TERMS_NOT_AGREED));
 
         KakaoLoginRequest request = new KakaoLoginRequest("code", false);
 
@@ -90,28 +87,5 @@ public class AuthServiceTest {
         assertThatThrownBy(() -> authService.kakaoLogin(request))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.TERMS_NOT_AGREED);
-    }
-
-    @Test
-    @DisplayName("카카오 닉네임이 없으면 기본 닉네임으로 가입된다")
-    void newUserWithNullNickname() {
-        // given
-        given(kakaoOAuthClient.getKakaoUser("code"))
-                .willReturn(new KakaoUserInfo("12345", null));
-        given(userRepository.existsByKakaoId("12345")).willReturn(false);
-        given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
-        given(userRepository.save(any(User.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
-        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
-        given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
-
-        // when
-        authService.kakaoLogin(new KakaoLoginRequest("code", true));
-
-        // then
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        then(userRepository).should().save(captor.capture());
-        assertThat(captor.getValue().getNickname()).isEqualTo("카카오사용자");
     }
 }
