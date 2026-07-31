@@ -4,6 +4,10 @@ import com.benly.document.entity.Document;
 import com.benly.document.exception.DocumentErrorCode;
 import com.benly.document.repository.DocumentRepository;
 import com.benly.global.exception.BusinessException;
+import com.benly.question.entity.Question;
+import com.benly.question.entity.SeedQuestion;
+import com.benly.question.repository.QuestionRepository;
+import com.benly.question.repository.SeedQuestionRepository;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.entity.Session;
@@ -14,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +28,8 @@ public class SessionService {
     private final SessionRepository sessionRepository;
     private final UserRepository userRepository; // 여기 부분은 user 담당자가 repository를 만들면 적용
     private final DocumentRepository documentRepository;
+    private final SeedQuestionRepository seedQuestionRepository;
+    private final QuestionRepository questionRepository;
 
     @Transactional
     public SessionCreateResponse createSession(Long userId, SessionCreateRequest sessionCreateRequest) {
@@ -43,12 +51,14 @@ public class SessionService {
         );
         Session saved =  sessionRepository.save(session);
 
+        generateQuestions(saved, sessionCreateRequest);
+
+
         // 4. TODO: 비동기로 질문 생성 시작
 
         // 5. 응답
         return SessionCreateResponse.from(saved.getId(), saved.getStatus());
     }
-
 
     // 소유권 검증 메서드
     private void validateDocumentOwnerShip(Long docId, Long userId) {
