@@ -1,6 +1,8 @@
 package com.benly.auth.client;
 
+import com.benly.auth.client.dto.KakaoUserInfo;
+
 public interface KakaoOAuthClient {
 
-    String getKakaoId(String authorizationCode);
+    KakaoUserInfo getKakaoUser(String authorizationCode);
 }

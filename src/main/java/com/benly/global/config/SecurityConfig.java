@@ -1,23 +1,44 @@
 package com.benly.global.config;
 
+import com.benly.auth.jwt.JwtAuthenticationEntryPoint;
+import com.benly.auth.jwt.JwtAuthenticationFilter;
+import com.benly.auth.jwt.JwtProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
 
-    // TODO: auth 구현 시 인증 정책 + JWT 필터 추가
+    private final JwtProvider jwtProvider;
+    private final JwtAuthenticationEntryPoint entryPoint;
+
+    public SecurityConfig(JwtProvider jwtProvider,
+                          JwtAuthenticationEntryPoint entryPoint) {
+        this.jwtProvider = jwtProvider;
+        this.entryPoint = entryPoint;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
                 .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll()
+                        .requestMatchers(
+                                "/api/v1/auth/kakao/login",
+                                "/api/v1/auth/token/refresh"
+                        ).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(jwtProvider),
+                        UsernamePasswordAuthenticationFilter.class
                 );
         return http.build();
     }
