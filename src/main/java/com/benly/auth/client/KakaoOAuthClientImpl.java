@@ -23,19 +23,22 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
     private final String redirectUri;
     private final String tokenUri;
     private final String userInfoUri;
+    private final String clientSecret;
 
     public KakaoOAuthClientImpl(
             RestClient restClient,
             @Value("${kakao.client-id}") String clientId,
             @Value("${kakao.redirect-uri}") String redirectUri,
             @Value("${kakao.token-uri}") String tokenUri,
-            @Value("${kakao.user-info-uri}") String userInfoUri
+            @Value("${kakao.user-info-uri}") String userInfoUri,
+            @Value("${kakao.client-secret:}") String clientSecret
     ) {
         this.restClient = restClient;
         this.clientId = clientId;
         this.redirectUri = redirectUri;
         this.tokenUri = tokenUri;
         this.userInfoUri = userInfoUri;
+        this.clientSecret = clientSecret;
     }
 
     @Override
@@ -59,13 +62,16 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
         return user.kakaoAccount().profile().nickname();
     }
 
-    // TODO: Client Secret 적용 (현재 카카오 콘솔에서 비활성화 상태)
     private String requestAccessToken(String authorizationCode) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "authorization_code");
         form.add("client_id", clientId);
         form.add("redirect_uri", redirectUri);
         form.add("code", authorizationCode);
+
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            form.add("client_secret", clientSecret);
+        }
 
         KakaoTokenResponse response = restClient.post()
                 .uri(tokenUri)
