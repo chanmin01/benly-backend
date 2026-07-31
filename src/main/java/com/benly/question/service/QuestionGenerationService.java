@@ -9,6 +9,7 @@ import com.benly.question.repository.SeedQuestionRepository;
 import com.benly.session.entity.Session;
 import com.benly.session.repository.SessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ public class QuestionGenerationService {
     private final QuestionRepository questionRepository;
     private final SessionRepository sessionRepository;
 
+    @Async
     @Transactional
     public void generate(Long sessionId, String jd) {
         Session session = sessionRepository.findById(sessionId).orElse(null);

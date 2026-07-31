@@ -8,6 +8,7 @@ import com.benly.question.entity.Question;
 import com.benly.question.entity.SeedQuestion;
 import com.benly.question.repository.QuestionRepository;
 import com.benly.question.repository.SeedQuestionRepository;
+import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.entity.Session;
@@ -28,8 +29,7 @@ public class SessionService {
     private final SessionRepository sessionRepository;
     private final UserRepository userRepository; // 여기 부분은 user 담당자가 repository를 만들면 적용
     private final DocumentRepository documentRepository;
-    private final SeedQuestionRepository seedQuestionRepository;
-    private final QuestionRepository questionRepository;
+    private final QuestionGenerationService questionGenerationService;
 
     @Transactional
     public SessionCreateResponse createSession(Long userId, SessionCreateRequest sessionCreateRequest) {
@@ -51,10 +51,10 @@ public class SessionService {
         );
         Session saved =  sessionRepository.save(session);
 
-        generateQuestions(saved, sessionCreateRequest);
 
 
-        // 4. TODO: 비동기로 질문 생성 시작
+        // 4. 질문생성
+        questionGenerationService.generate(saved.getId(), sessionCreateRequest.jobDescription());
 
         // 5. 응답
         return SessionCreateResponse.from(saved.getId(), saved.getStatus());
