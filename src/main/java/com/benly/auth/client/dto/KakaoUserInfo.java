@@ -1,4 +1,7 @@
 package com.benly.auth.client.dto;
 
-public class KakaoUserInfo {
+public record KakaoUserInfo(
+        String kakaoId,
+        String nickname
+) {
 }

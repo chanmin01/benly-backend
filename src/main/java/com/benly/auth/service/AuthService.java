@@ -1,6 +1,7 @@
 package com.benly.auth.service;
 
 import com.benly.auth.client.KakaoOAuthClient;
+import com.benly.auth.client.dto.KakaoUserInfo;
 import com.benly.auth.dto.KakaoLoginRequest;
 import com.benly.auth.dto.KakaoLoginResponse;
 import com.benly.auth.dto.TokenPair;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AuthService {
 
+    private static final String DEFAULT_NICKNAME = "카카오사용자";
+
     private final KakaoOAuthClient kakaoOAuthClient;
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -27,28 +30,35 @@ public class AuthService {
 
     @Transactional
     public KakaoLoginResponse kakaoLogin(KakaoLoginRequest request) {
-        String kakaoId = kakaoOAuthClient.getKakaoId(request.authorizationCode());
+        KakaoUserInfo kakaoUser = kakaoOAuthClient.getKakaoUser(request.authorizationCode());
 
-        boolean isNewUser = !userRepository.existsByKakaoId(kakaoId);
-        User user = findOrRegister(kakaoId, request.termsAgreed());
+        boolean isNewUser = !userRepository.existsByKakaoId(kakaoUser.kakaoId());
+        User user = findOrRegister(kakaoUser, request.termsAgreed());
 
         TokenPair tokens = issueAndSaveTokens(user);
 
         return KakaoLoginResponse.of(tokens, user, isNewUser);
     }
 
-    private User findOrRegister(String kakaoId, boolean termsAgreed) {
-        return userRepository.findByKakaoId(kakaoId)
-                .orElseGet(() -> register(kakaoId, termsAgreed));
+    private User findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+        return userRepository.findByKakaoId(kakaoUser.kakaoId())
+                .orElseGet(() -> register(kakaoUser, termsAgreed));
     }
 
-    private User register(String kakaoId, boolean termsAgreed) {
+    private User register(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         if (!Boolean.TRUE.equals(termsAgreed)) {
             throw new BusinessException(AuthErrorCode.TERMS_NOT_AGREED);
         }
-        // TODO: 카카오 프로필 닉네임 반영 (현재 하드코딩)
-        User user = User.of(kakaoId, "카카오사용자");
+        String nickname = resolveNickname(kakaoUser.nickname());
+        User user = User.of(kakaoUser.kakaoId(), nickname);
         return userRepository.save(user);
+    }
+
+    private String resolveNickname(String nickname) {
+        if (nickname == null || nickname.isBlank()) {
+            return DEFAULT_NICKNAME;
+        }
+        return nickname.length() > 50 ? nickname.substring(0, 50) : nickname;
     }
 
     private TokenPair issueAndSaveTokens(User user) {
