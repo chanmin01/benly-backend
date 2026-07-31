@@ -5,6 +5,7 @@ import com.benly.auth.client.dto.KakaoUserInfo;
 import com.benly.auth.dto.KakaoLoginRequest;
 import com.benly.auth.dto.KakaoLoginResponse;
 import com.benly.auth.dto.TokenPair;
+import com.benly.auth.dto.UserResolution;
 import com.benly.auth.entity.RefreshToken;
 import com.benly.auth.exception.AuthErrorCode;
 import com.benly.auth.jwt.JwtProvider;
@@ -32,38 +33,30 @@ public class AuthService {
     public KakaoLoginResponse kakaoLogin(KakaoLoginRequest request) {
         KakaoUserInfo kakaoUser = kakaoOAuthClient.getKakaoUser(request.authorizationCode());
 
-        boolean isNewUser = !userRepository.existsByKakaoId(kakaoUser.kakaoId());
-        User user = findOrRegister(kakaoUser, request.termsAgreed());
+        UserResolution resolution = findOrRegister(kakaoUser, request.termsAgreed());
 
-        TokenPair tokens = issueAndSaveTokens(user);
+        TokenPair tokens = issueAndSaveTokens(resolution.user());
 
-        return KakaoLoginResponse.of(tokens, user, isNewUser);
+        return KakaoLoginResponse.of(tokens, resolution.user(), resolution.isNewUser());
     }
 
-    private User findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+    private UserResolution findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         return userRepository.findByKakaoId(kakaoUser.kakaoId())
+                .map(user -> new UserResolution(user, false))
                 .orElseGet(() -> registerOrFindExisting(kakaoUser, termsAgreed));
     }
 
-    private User registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+    private UserResolution registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         try {
-            return userRegistrationService.register(kakaoUser, termsAgreed);
+            User created = userRegistrationService.register(kakaoUser, termsAgreed);
+            return new UserResolution(created, true);
         } catch (DataIntegrityViolationException e) {
-            return userRepository.findByKakaoId(kakaoUser.kakaoId())
+            User existing = userRepository.findByKakaoId(kakaoUser.kakaoId())
                     .orElseThrow(() -> new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED));
+            return new UserResolution(existing, false);
         }
     }
 
-    private TokenPair issueAndSaveTokens(User user) {
-        String accessToken = jwtProvider.createAccessToken(user.getId());
-        String refreshToken = jwtProvider.createRefreshToken(user.getId());
-
-        refreshTokenRepository.save(
-                RefreshToken.of(user, refreshToken, jwtProvider.getRefreshTokenExpiry()
-                ));
-
-        return new TokenPair(accessToken, refreshToken);
-    }
 
     @Transactional
     public TokenPair reissue(String refreshToken) {
@@ -78,6 +71,17 @@ public class AuthService {
         refreshTokenRepository.delete(saved);
 
         return issueAndSaveTokens(user);
+    }
+
+    private TokenPair issueAndSaveTokens(User user) {
+        String accessToken = jwtProvider.createAccessToken(user.getId());
+        String refreshToken = jwtProvider.createRefreshToken(user.getId());
+
+        refreshTokenRepository.save(
+                RefreshToken.of(user, refreshToken, jwtProvider.getRefreshTokenExpiry()
+                ));
+
+        return new TokenPair(accessToken, refreshToken);
     }
 
     @Transactional
