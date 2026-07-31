@@ -57,4 +57,8 @@ public class Session extends BaseEntity {
     public void markFailed() {
         this.status = "FAILED";
     }
+
+    public void markInProgress() {
+        this.status = "IN_PROGRESS";
+    }
 }
