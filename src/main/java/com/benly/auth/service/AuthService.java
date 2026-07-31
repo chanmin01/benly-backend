@@ -1,6 +1,7 @@
 package com.benly.auth.service;
 
 import com.benly.auth.client.KakaoOAuthClient;
+import com.benly.auth.client.dto.KakaoUserInfo;
 import com.benly.auth.dto.KakaoLoginRequest;
 import com.benly.auth.dto.KakaoLoginResponse;
 import com.benly.auth.dto.TokenPair;
@@ -12,6 +13,7 @@ import com.benly.global.exception.BusinessException;
 import com.benly.user.entity.User;
 import com.benly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,31 +26,32 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtProvider jwtProvider;
+    private final UserRegistrationService userRegistrationService;
 
     @Transactional
     public KakaoLoginResponse kakaoLogin(KakaoLoginRequest request) {
-        String kakaoId = kakaoOAuthClient.getKakaoId(request.authorizationCode());
+        KakaoUserInfo kakaoUser = kakaoOAuthClient.getKakaoUser(request.authorizationCode());
 
-        boolean isNewUser = !userRepository.existsByKakaoId(kakaoId);
-        User user = findOrRegister(kakaoId, request.termsAgreed());
+        boolean isNewUser = !userRepository.existsByKakaoId(kakaoUser.kakaoId());
+        User user = findOrRegister(kakaoUser, request.termsAgreed());
 
         TokenPair tokens = issueAndSaveTokens(user);
 
         return KakaoLoginResponse.of(tokens, user, isNewUser);
     }
 
-    private User findOrRegister(String kakaoId, boolean termsAgreed) {
-        return userRepository.findByKakaoId(kakaoId)
-                .orElseGet(() -> register(kakaoId, termsAgreed));
+    private User findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+        return userRepository.findByKakaoId(kakaoUser.kakaoId())
+                .orElseGet(() -> registerOrFindExisting(kakaoUser, termsAgreed));
     }
 
-    private User register(String kakaoId, boolean termsAgreed) {
-        if (!Boolean.TRUE.equals(termsAgreed)) {
-            throw new BusinessException(AuthErrorCode.TERMS_NOT_AGREED);
+    private User registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
+        try {
+            return userRegistrationService.register(kakaoUser, termsAgreed);
+        } catch (DataIntegrityViolationException e) {
+            return userRepository.findByKakaoId(kakaoUser.kakaoId())
+                    .orElseThrow(() -> new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED));
         }
-        // TODO: 카카오 프로필 닉네임 반영 (현재 하드코딩)
-        User user = User.of(kakaoId, "카카오사용자");
-        return userRepository.save(user);
     }
 
     private TokenPair issueAndSaveTokens(User user) {

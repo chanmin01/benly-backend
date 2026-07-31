@@ -1,6 +1,7 @@
 package com.benly.auth.service;
 
 import com.benly.auth.client.KakaoOAuthClient;
+import com.benly.auth.client.dto.KakaoUserInfo;
 import com.benly.auth.dto.KakaoLoginRequest;
 import com.benly.auth.dto.KakaoLoginResponse;
 import com.benly.auth.exception.AuthErrorCode;
@@ -21,6 +22,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
 
 
@@ -35,6 +38,8 @@ public class AuthServiceTest {
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private JwtProvider jwtProvider;
+    @Mock
+    private UserRegistrationService userRegistrationService;
 
     @InjectMocks
     private AuthService authService;
@@ -43,15 +48,14 @@ public class AuthServiceTest {
     @DisplayName("신규 유저가 약관 동의하면 가입되고 토큰이 발급된다")
     void newUserLogin() {
         // given
-        given(kakaoOAuthClient.getKakaoId("code")).willReturn("12345");
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
-        given(userRepository.save(org.mockito.ArgumentMatchers.any(User.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(jwtProvider.createAccessToken(org.mockito.ArgumentMatchers.any()))
-                .willReturn("access-token");
-        given(jwtProvider.createRefreshToken(org.mockito.ArgumentMatchers.any()))
-                .willReturn("refresh-token");
+        given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
+                .willReturn(User.of("12345", "홍길동"));
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry())
                 .willReturn(LocalDateTime.now().plusWeeks(2));
 
@@ -70,9 +74,12 @@ public class AuthServiceTest {
     @DisplayName("신규 유저가 약관 미동의하면 예외가 발생한다")
     void newUserWithoutTermsAgreed() {
         // given
-        given(kakaoOAuthClient.getKakaoId("code")).willReturn("12345");
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.existsByKakaoId("12345")).willReturn(false);
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
+        given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
+                .willThrow(new BusinessException(AuthErrorCode.TERMS_NOT_AGREED));
 
         KakaoLoginRequest request = new KakaoLoginRequest("code", false);
 

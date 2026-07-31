@@ -4,14 +4,16 @@ import com.benly.auth.dto.KakaoLoginRequest;
 import com.benly.auth.dto.KakaoLoginResponse;
 import com.benly.auth.dto.TokenPair;
 import com.benly.auth.dto.TokenRefreshRequest;
-import com.benly.auth.exception.AuthErrorCode;
 import com.benly.auth.jwt.JwtProvider;
 import com.benly.auth.service.AuthService;
 import com.benly.global.common.ApiResponse;
-import com.benly.global.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -32,15 +34,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestHeader("Authorization") String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
-        }
-        String token = authorizationHeader.substring("Bearer ".length());
-        if (token.isBlank() || !jwtProvider.isValid(token)) {
-            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
-        }
-        Long userId = jwtProvider.getUserId(token);
+    public ApiResponse<Void> logout(@AuthenticationPrincipal Long userId) {
         authService.logout(userId);
         return ApiResponse.success("로그아웃되었습니다.");
     }
