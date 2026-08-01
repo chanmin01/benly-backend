@@ -110,4 +110,28 @@ public class AuthServiceTest {
         // then
         assertThat(response.isNewUser()).isFalse();
     }
+
+    @Test
+    @DisplayName("탈퇴한 유저가 다시 로그인하면 계정이 복구되고 isNewUser는 false다")
+    void withdrawnUserReloginRestoresAccount() {
+        // given
+        User withdrawnUser = User.of("12345", "홍길동");
+        withdrawnUser.softDelete();
+
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
+        given(userRepository.findByKakaoId("12345"))
+                .willReturn(Optional.of(withdrawnUser));
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
+        given(jwtProvider.getRefreshTokenExpiry())
+                .willReturn(LocalDateTime.now().plusWeeks(2));
+
+        // when
+        KakaoLoginResponse response = authService.kakaoLogin(new KakaoLoginRequest("code", true));
+
+        // then
+        assertThat(withdrawnUser.isDeleted()).isFalse();
+        assertThat(response.isNewUser()).isFalse();
+    }
 }
