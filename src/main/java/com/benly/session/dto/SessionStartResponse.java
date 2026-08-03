@@ -25,7 +25,7 @@ public record SessionStartResponse(
     public static SessionStartResponse from(Session session, Question firstQuestion) {
         return new SessionStartResponse(
                 session.getId(),
-                session.getStatus(),
+                session.getStatus().name(),
                 FirstQuestion.from(firstQuestion)
         );
     }

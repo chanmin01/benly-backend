@@ -11,6 +11,7 @@ import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
 import com.benly.session.dto.SessionStartResponse;
 import com.benly.session.entity.Session;
+import com.benly.session.entity.SessionStatus;
 import com.benly.session.exception.SessionErrorCode;
 import com.benly.session.repository.SessionRepository;
 import com.benly.user.entity.User;
@@ -51,7 +52,7 @@ public class SessionService {
 
 
         // 5. 응답
-        return SessionCreateResponse.from(saved.getId(), saved.getStatus());
+        return SessionCreateResponse.from(saved.getId(), saved.getStatus().name());
     }
 
     // 소유권 검증 메서드
@@ -74,8 +75,11 @@ public class SessionService {
             throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
         }
 
-        // 3. 상태 검증
-        if (!"READY".equals(session.getStatus())) {
+        // 3. 원자적 상태 전환 (READY → IN_PROGRESS) - 동시 요청 방어
+        int updated = sessionRepository.updateStatusIfCurrent(
+                sessionId, SessionStatus.READY, SessionStatus.IN_PROGRESS);
+        if (updated == 0) {
+            // 0 = READY가 아니었음 (이미 시작됐거나 생성 중)
             throw new BusinessException(SessionErrorCode.SESSION_NOT_READY);
         }
 
