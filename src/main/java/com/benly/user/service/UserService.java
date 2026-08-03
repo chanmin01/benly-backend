@@ -25,7 +25,11 @@ public class UserService {
 
     @Transactional
     public void withdraw(Long userId) {
-        User user = getActiveUser(userId);
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+        if (user.isDeleted()) {
+            throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
+        }
         user.softDelete();
         refreshTokenRepository.deleteByUserId(userId);
     }
