@@ -42,8 +42,15 @@ public class AuthService {
 
     private UserResolution findOrRegister(KakaoUserInfo kakaoUser, boolean termsAgreed) {
         return userRepository.findByKakaoId(kakaoUser.kakaoId())
-                .map(user -> new UserResolution(user, false))
+                .map(this::resolveExisting)
                 .orElseGet(() -> registerOrFindExisting(kakaoUser, termsAgreed));
+    }
+
+    private UserResolution resolveExisting(User user) {
+        if (user.isDeleted()) {
+            user.restore();
+        }
+        return new UserResolution(user, false);
     }
 
     private UserResolution registerOrFindExisting(KakaoUserInfo kakaoUser, boolean termsAgreed) {
@@ -57,7 +64,6 @@ public class AuthService {
         }
     }
 
-
     @Transactional
     public TokenPair reissue(String refreshToken) {
         if (!jwtProvider.isValid(refreshToken)) {
@@ -67,7 +73,14 @@ public class AuthService {
         RefreshToken saved = refreshTokenRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
 
-        User user = saved.getUser();
+        User user = userRepository.findByIdForUpdate(saved.getUser().getId())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        if (user.isDeleted()) {
+            refreshTokenRepository.delete(saved);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+        }
+
         refreshTokenRepository.delete(saved);
 
         return issueAndSaveTokens(user);
