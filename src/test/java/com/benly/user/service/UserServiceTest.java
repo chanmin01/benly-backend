@@ -2,6 +2,7 @@ package com.benly.user.service;
 
 import com.benly.auth.repository.RefreshTokenRepository;
 import com.benly.global.exception.BusinessException;
+import com.benly.user.dto.UserMeResponse;
 import com.benly.user.entity.User;
 import com.benly.user.exception.UserErrorCode;
 import com.benly.user.repository.UserRepository;
@@ -88,6 +89,34 @@ public class UserServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", UserErrorCode.USER_NOT_FOUND);
         verify(refreshTokenRepository, never()).deleteByUserId(1L);
+    }
+
+    @Test
+    @DisplayName("내 정보 조회 시 id와 닉네임을 반환한다")
+    void getMyInfoSuccess() {
+        // given
+        User user = User.of("12345", "홍길동");
+        given(userRepository.findByIdAndDeletedAtIsNull(1L))
+                .willReturn(Optional.of(user));
+
+        // when
+        UserMeResponse response = userService.getMyInfo(1L);
+
+        // then
+        assertThat(response.nickname()).isEqualTo("홍길동");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는(탈퇴) 유저의 정보 조회 시 예외가 발생한다")
+    void getMyInfoUserNotFound() {
+        // given
+        given(userRepository.findByIdAndDeletedAtIsNull(1L))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> userService.getMyInfo(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", UserErrorCode.USER_NOT_FOUND);
     }
 
 }
