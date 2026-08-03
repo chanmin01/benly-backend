@@ -65,7 +65,7 @@ public class UserServiceTest {
     void withdrawSuccess() {
         // given
         User user = User.of("12345", "홍길동");
-        given(userRepository.findByIdAndDeletedAtIsNull(1L))
+        given(userRepository.findByIdForUpdate(1L))
                 .willReturn(Optional.of(user));
 
         // when
@@ -80,7 +80,7 @@ public class UserServiceTest {
     @DisplayName("존재하지 않는 유저 탈퇴 시 예외가 발생하고 토큰은 건드리지 않는다")
     void withdrawUserNotFound() {
         // given
-        given(userRepository.findByIdAndDeletedAtIsNull(1L))
+        given(userRepository.findByIdForUpdate(1L))
                 .willReturn(Optional.empty());
 
         // when & then
