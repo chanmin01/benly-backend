@@ -21,7 +21,7 @@ public class AnswerController {
             @RequestParam Long userId,   // TODO: 인증 완성 후 @AuthenticationPrincipal
             @Valid @RequestBody AnswerCreateRequest request
     ) {
-        AnswerResponse data = answerService.submitTextAnswer(userId, sessionId, request);
+        AnswerResponse data = answerService.submitTextAnswer(sessionId, userId, request);
         return ApiResponse.success("답변이 저장되었습니다.", data);
     }
 }

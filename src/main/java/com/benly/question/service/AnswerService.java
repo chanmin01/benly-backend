@@ -25,6 +25,7 @@ public class AnswerService {
 
     private static final int MIN_ANSWER_LENGTH = 10;
 
+    @Transactional(readOnly = false)
     public AnswerResponse submitTextAnswer(Long sessionId, Long userId, AnswerCreateRequest request) {
 
         // 1. 질문조회
