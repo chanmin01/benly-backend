@@ -4,6 +4,7 @@ import com.benly.document.dto.DocumentResponse;
 import com.benly.document.service.DocumentService;
 import com.benly.global.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -19,7 +20,7 @@ public class DocumentController {
     private final DocumentService documentService;
 
     @GetMapping("/documents")
-    public ApiResponse<List<DocumentResponse>> getDocuments(@RequestParam Long userId) {
+    public ApiResponse<List<DocumentResponse>> getDocuments(@AuthenticationPrincipal Long userId) {
         List<DocumentResponse> data = documentService.getDocuments(userId);
         return ApiResponse.success("서류 목록 조회 성공", data);
     }

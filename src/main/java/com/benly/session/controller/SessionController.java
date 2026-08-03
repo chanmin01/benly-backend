@@ -4,10 +4,12 @@ import com.benly.global.common.ApiResponse;
 import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.SessionCreateRequest;
 import com.benly.session.dto.SessionCreateResponse;
+import com.benly.session.dto.SessionStartResponse;
 import com.benly.session.service.SessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,7 +23,7 @@ public class SessionController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SessionCreateResponse> createSession(
-            @RequestParam Long userId, // TODO: 인증 완성 후 @AuthenticationPrincipal로
+            @AuthenticationPrincipal Long userId,
             @Valid @RequestBody SessionCreateRequest sessionCreateRequest) {
         // 1. 세션 생성 완료 (이 메서드가 종료되면서 Service 단의 @Transactional이 커밋)
         SessionCreateResponse data = sessionService.createSession(userId, sessionCreateRequest);
@@ -30,5 +32,13 @@ public class SessionController {
         questionGenerationService.generate(data.sessionId(), sessionCreateRequest.jobDescription());
 
         return ApiResponse.success("면접관이 면접을 준비하고 있어요.", data);
+    }
+
+    @PostMapping("/{sessionId}/start")
+    public ApiResponse<SessionStartResponse> startSession(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        SessionStartResponse data = sessionService.startSession(userId, sessionId);
+        return ApiResponse.success("면접을 시작합니다.", data);
     }
 }
