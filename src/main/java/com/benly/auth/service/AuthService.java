@@ -73,7 +73,14 @@ public class AuthService {
         RefreshToken saved = refreshTokenRepository.findByRefreshToken(refreshToken)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
 
-        User user = saved.getUser();
+        User user = userRepository.findByIdForUpdate(saved.getUser().getId())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        if (user.isDeleted()) {
+            refreshTokenRepository.delete(saved);
+            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+        }
+
         refreshTokenRepository.delete(saved);
 
         return issueAndSaveTokens(user);
