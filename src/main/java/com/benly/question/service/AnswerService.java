@@ -25,7 +25,7 @@ public class AnswerService {
 
     private static final int MIN_ANSWER_LENGTH = 10;
 
-    public AnswerResponse submitTextAnswer(Long userId, Long sessionId, AnswerCreateRequest request) {
+    public AnswerResponse submitTextAnswer(Long sessionId, Long userId, AnswerCreateRequest request) {
 
         // 1. 질문조회
         Question question = questionRepository.findById(request.questionId())
