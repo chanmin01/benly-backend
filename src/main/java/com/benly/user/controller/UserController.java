@@ -2,6 +2,7 @@ package com.benly.user.controller;
 
 import com.benly.global.common.ApiResponse;
 import com.benly.user.dto.UpdateNicknameRequest;
+import com.benly.user.dto.UserMeResponse;
 import com.benly.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,11 @@ public class UserController {
     public ApiResponse<Void> withdraw(@AuthenticationPrincipal Long userId) {
         userService.withdraw(userId);
         return ApiResponse.success("회원 탈퇴가 완료되었습니다.");
+    }
+
+    @GetMapping("/me")
+    public ApiResponse<UserMeResponse> getMyInfo(@AuthenticationPrincipal Long userId) {
+        return ApiResponse.success("내 정보를 조회했습니다.", userService.getMyInfo(userId));
     }
 }
 
