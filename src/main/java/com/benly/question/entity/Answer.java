@@ -24,12 +24,27 @@ public class Answer extends BaseTimeEntity {
     @Column(name = "transcript", columnDefinition = "TEXT")
     private String transcript;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "input_type", nullable = false, length = 10)
-    private String inputType;
+    private AnswerType inputType;
 
     @Column(name = "duration_sec")
     private Integer durationSec;
 
     @Column(name = "stt_status", length = 20)
     private String sttStatus;
+
+
+    private Answer(Question question, String transcript, AnswerType inputType, Integer durationSec, String sttStatus) {
+        this.question = question;
+        this.transcript = transcript;
+        this.inputType = inputType;
+        this.durationSec = durationSec;
+        this.sttStatus = sttStatus;
+    }
+
+    public static Answer createText(Question question, String transcript){
+        return new Answer(question, transcript, AnswerType.TEXT, null, null);
+    }
 }
+
