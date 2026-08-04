@@ -77,14 +77,16 @@ class AnswerServiceTest {
 
         given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
         given(answerRepository.existsByQuestionId(QUESTION_ID)).willReturn(false);
-        given(answerRepository.save(any(Answer.class))).willAnswer(inv -> inv.getArgument(0));
+
+        // 🛠️ 수정됨: save()가 아닌 saveAndFlush()의 Mock 동작을 정의합니다.
+        given(answerRepository.saveAndFlush(any(Answer.class))).willAnswer(inv -> inv.getArgument(0));
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
 
-        // 수정: 파라미터 순서를 SESSION_ID, USER_ID 순으로 변경
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
 
-        verify(answerRepository).save(any(Answer.class));
+        // 🛠️ 수정됨: 로직이 saveAndFlush()를 정상적으로 호출했는지 검증합니다.
+        verify(answerRepository).saveAndFlush(any(Answer.class));
         assertThat(response.answer().transcript()).contains("재고 차감");
     }
 
@@ -97,7 +99,6 @@ class AnswerServiceTest {
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
 
-        // 수정: 파라미터 순서 변경
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
@@ -118,7 +119,6 @@ class AnswerServiceTest {
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
         Long wrongSessionId = 999L;   // URL 세션이 질문의 세션(10)과 다름
 
-        // 수정: 파라미터 순서 변경 (wrongSessionId가 먼저 옴)
         assertThatThrownBy(() -> answerService.submitTextAnswer(wrongSessionId, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
@@ -138,7 +138,6 @@ class AnswerServiceTest {
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
 
-        // 수정: 파라미터 순서 변경
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
@@ -158,7 +157,6 @@ class AnswerServiceTest {
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
 
-        // 수정: 파라미터 순서 변경
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
@@ -179,7 +177,6 @@ class AnswerServiceTest {
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
 
-        // 수정: 파라미터 순서 변경
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
@@ -200,7 +197,6 @@ class AnswerServiceTest {
 
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, "짧음");   // 10자 미만
 
-        // 수정: 파라미터 순서 변경
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
