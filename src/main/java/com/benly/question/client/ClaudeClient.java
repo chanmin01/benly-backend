@@ -123,4 +123,82 @@ public class ClaudeClient {
         }
         return questions;
     }
+
+    public String generateFollowUp(String mainQuestion, String context) {
+        // 1. 프롬프트
+        String prompt = buildFollowUpPrompt(mainQuestion, context);
+
+        // 2. Tool Use 스키마 (질문 하나)
+        Map<String, Object> requestBody = Map.of(
+                "model", model,
+                "max_tokens", 1000,
+                "messages", List.of(
+                        Map.of("role", "user", "content", prompt)
+                ),
+                "tools", List.of(
+                        Map.of(
+                                "name", "generate_follow_up_question",
+                                "description", "꼬리질문 하나를 생성하여 반환합니다.",
+                                "input_schema", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "question", Map.of(
+                                                        "type", "string",
+                                                        "description", "꼬리질문 텍스트 (하나)"
+                                                )
+                                        ),
+                                        "required", List.of("question")
+                                )
+                        )
+                ),
+                "tool_choice", Map.of(
+                        "type", "tool",
+                        "name", "generate_follow_up_question"
+                )
+        );
+
+        // 3. API 호출
+        JsonNode response = restClient.post()
+                .uri(apiUrl)
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .body(requestBody)
+                .retrieve()
+                .body(JsonNode.class);
+
+        return parseFollowUp(response);
+    }
+
+    private String buildFollowUpPrompt(String mainQuestion, String context) {
+        return """
+            당신은 면접관입니다. 아래는 메인 질문과 지원자의 답변 맥락입니다.
+
+            [메인 질문]
+            %s
+
+            [답변 맥락]
+            %s
+
+            위 답변을 평가하여 꼬리질문 하나를 생성하세요.
+            - 답변이 충분하고 구체적이면: 그 내용을 더 깊이 파고드는 질문을 생성하세요.
+            - 답변이 불충분하거나 모호하면: 메인 질문 관점에서 다른 각도의 질문을 생성하세요.
+
+            제공된 도구(Tool)를 사용하여 꼬리질문 하나만 반환하세요.
+            """.formatted(mainQuestion, context);
+    }
+
+    private String parseFollowUp(JsonNode response) {
+        JsonNode contentArray = response.path("content");
+        for (JsonNode content : contentArray) {
+            if ("tool_use".equals(content.path("type").asText())) {
+                String question = content.path("input").path("question").asText().trim();
+                if (!question.isEmpty()) {
+                    return question;
+                }
+            }
+        }
+        // 파싱 실패 시 (Claude가 이상하게 응답)
+        throw new IllegalStateException("꼬리질문 생성 실패");
+    }
 }
