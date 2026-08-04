@@ -2,6 +2,7 @@ package com.benly.user.service;
 
 import com.benly.auth.repository.RefreshTokenRepository;
 import com.benly.global.exception.BusinessException;
+import com.benly.user.dto.UserMeResponse;
 import com.benly.user.entity.User;
 import com.benly.user.exception.UserErrorCode;
 import com.benly.user.repository.UserRepository;
@@ -37,5 +38,10 @@ public class UserService {
     private User getActiveUser(Long userId) {
         return userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+    }
+
+    public UserMeResponse getMyInfo(Long userId) {
+        User user = getActiveUser(userId);
+        return UserMeResponse.from(user);
     }
 }
