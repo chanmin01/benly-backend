@@ -2,9 +2,10 @@ package com.benly.question.service;
 
 import com.benly.global.exception.BusinessException;
 import com.benly.question.client.ClaudeClient;
+import com.benly.question.client.WhisperClient;
 import com.benly.question.dto.AnswerCreateRequest;
 import com.benly.question.dto.AnswerResponse;
-import com.benly.question.dto.NextActionType;
+import com.benly.question.entity.NextActionType;
 import com.benly.question.entity.Answer;
 import com.benly.question.entity.Question;
 import com.benly.question.entity.QuestionSourceType;
@@ -18,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +33,7 @@ public class AnswerService {
     private final AnswerRepository answerRepository;
     private final QuestionRepository questionRepository;
     private final ClaudeClient claudeClient;
+    private final WhisperClient whisperClient;
 
     private static final int MIN_ANSWER_LENGTH = 10;
     private static final int MAX_FOLLOW_UP = 2;
@@ -84,6 +87,55 @@ public class AnswerService {
         return AnswerResponse.from(savedAnswer, nextAction);
     }
 
+    @Transactional
+    public AnswerResponse submitAudioAnswer(Long sessionId, Long userId, Long questionId, MultipartFile audioFile) {
+        // 1. 질문 조회
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new BusinessException(AnswerErrorCode.QUESTION_NOT_FOUND));
+
+        Session session = question.getSession();
+
+
+        // 2. 세션 일치
+        if (!session.getId().equals(sessionId)) {
+            throw new BusinessException(AnswerErrorCode.QUESTION_SESSION_MISMATCH);
+        }
+        // 3. 소유권
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(AnswerErrorCode.ANSWER_FORBIDDEN);
+        }
+        // 4. 상태
+        if (session.getStatus() != SessionStatus.IN_PROGRESS) {
+            throw new BusinessException(AnswerErrorCode.SESSION_NOT_IN_PROGRESS);
+        }
+        // 5. 중복
+        if (answerRepository.existsByQuestionId(question.getId())) {
+            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
+        }
+
+        // 6. 음성 → 텍스트 (Whisper)
+        String transcript = whisperClient.transcribe(audioFile);
+
+        // 7. 길이 검증
+        if (transcript.trim().length() < MIN_ANSWER_LENGTH) {
+            throw new BusinessException(AnswerErrorCode.ANSWER_TOO_SHORT);
+        }
+
+        // 8. 저장 (saveAndFlush + 동시성)
+        Answer answer = Answer.createAudio(question, transcript.trim(), null);
+        Answer savedAnswer;
+        try {
+            savedAnswer = answerRepository.saveAndFlush(answer);
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
+        }
+
+        // 9. nextAction
+        AnswerResponse.NextAction nextAction = decideNextAction(question, session);
+
+        return AnswerResponse.from(savedAnswer, nextAction);
+    }
+
     private AnswerResponse.NextAction decideNextAction(Question answeredQuestion,
                                                        Session session) {
         boolean isMain = (answeredQuestion.getParent() == null);
@@ -111,7 +163,7 @@ public class AnswerService {
                                                         Session session, int followUpSeq) {
         try {
             String context = buildContext(mainQuestion);
-            String content = claudeClient.generateFollowUp(mainQuestion.getContent(), context);
+            String content = claudeClient.generateFollowUp(context);
 
             Question followUp = Question.createFollowUp(
                     session, mainQuestion, followUpSeq, content, QuestionSourceType.CLAUDE);
@@ -147,21 +199,19 @@ public class AnswerService {
     private String buildContext(Question mainQuestion) {
         StringBuilder sb = new StringBuilder();
 
-        // 메인 답변
+        // 메인 질문 + 답변
+        sb.append("메인 질문: ").append(mainQuestion.getContent()).append("\n");
         answerRepository.findByQuestionId(mainQuestion.getId())
-                .ifPresent(a -> sb.append("메인 질문에 대한 답변: ")
-                        .append(a.getTranscript()).append("\n"));
+                .ifPresent(a -> sb.append("답변: ").append(a.getTranscript()).append("\n"));
 
-        // 이전 꼬리들 + 답변
+        // 꼬리질문들 + 답변
         List<Question> followUps = questionRepository.findByParentOrderBySeqAsc(mainQuestion);
         for (Question fu : followUps) {
             sb.append("꼬리질문: ").append(fu.getContent()).append("\n");
             answerRepository.findByQuestionId(fu.getId())
-                    .ifPresent(a -> sb.append("그에 대한 답변: ")
-                            .append(a.getTranscript()).append("\n"));
+                    .ifPresent(a -> sb.append("답변: ").append(a.getTranscript()).append("\n"));
         }
 
         return sb.toString();
     }
-
 }

@@ -33,8 +33,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/kakao/login",
                                 "/api/v1/auth/token/refresh",
-                                "/api/v1/sessions",
-                                "/api/v1/sessions/**"
+                                "/api/v1/sessions"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

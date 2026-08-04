@@ -6,7 +6,9 @@ import com.benly.question.dto.AnswerResponse;
 import com.benly.question.service.AnswerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -18,10 +20,21 @@ public class AnswerController {
     @PostMapping("/{sessionId}/answers/text")
     public ApiResponse<AnswerResponse> submitTextAnswer(
             @PathVariable Long sessionId,
-            @RequestParam Long userId,   // TODO: 인증 완성 후 @AuthenticationPrincipal
+            @AuthenticationPrincipal Long userId,
             @Valid @RequestBody AnswerCreateRequest request
     ) {
         AnswerResponse data = answerService.submitTextAnswer(sessionId, userId, request);
         return ApiResponse.success("답변이 저장되었습니다.", data);
+    }
+
+    @PostMapping("/{sessionId}/answers/audio")
+    public ApiResponse<AnswerResponse> submitAudioAnswer(
+            @PathVariable Long sessionId,
+            @RequestParam Long questionId,
+            @AuthenticationPrincipal Long userId,
+            @RequestParam("audio") MultipartFile audioFile) {
+        AnswerResponse data = answerService.submitAudioAnswer(
+                sessionId, userId, questionId, audioFile);
+        return ApiResponse.success("음성 답변이 저장되었습니다.", data);
     }
 }
