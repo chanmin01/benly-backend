@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 
@@ -96,6 +97,7 @@ public class UserServiceTest {
     void getMyInfoSuccess() {
         // given
         User user = User.of("12345", "홍길동");
+        ReflectionTestUtils.setField(user, "id", 1L);
         given(userRepository.findByIdAndDeletedAtIsNull(1L))
                 .willReturn(Optional.of(user));
 
@@ -103,6 +105,7 @@ public class UserServiceTest {
         UserMeResponse response = userService.getMyInfo(1L);
 
         // then
+        assertThat(response.id()).isEqualTo(1L);
         assertThat(response.nickname()).isEqualTo("홍길동");
     }
 
