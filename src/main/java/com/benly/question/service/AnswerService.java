@@ -12,6 +12,7 @@ import com.benly.question.repository.QuestionRepository;
 import com.benly.session.entity.Session;
 import com.benly.session.entity.SessionStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +26,7 @@ public class AnswerService {
 
     private static final int MIN_ANSWER_LENGTH = 10;
 
-    @Transactional(readOnly = false)
+    @Transactional
     public AnswerResponse submitTextAnswer(Long sessionId, Long userId, AnswerCreateRequest request) {
 
         // 1. 질문조회
@@ -60,13 +61,19 @@ public class AnswerService {
         }
 
         // 7. Answer 저장
-        Answer answer = Answer.createText(question, request.transcript());
-        Answer saved =  answerRepository.save(answer);
+        Answer answer = Answer.createText(question, request.transcript().trim());
+        Answer savedAnswer;
+        try{
+            // 저장 및 flush (동시성 제어)
+            savedAnswer =  answerRepository.saveAndFlush(answer);
+        } catch (DataIntegrityViolationException ex){
+            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
+        }
 
         // 8. nextAction (우선은 NextMain으로 고정)
         AnswerResponse.NextAction nextAction =
                 AnswerResponse.NextAction.of(NextActionType.NEXT_MAIN, null);
 
-        return AnswerResponse.from(saved, nextAction);
+        return AnswerResponse.from(savedAnswer, nextAction);
     }
 }
