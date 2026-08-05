@@ -4,6 +4,7 @@ import io.awspring.cloud.s3.ObjectMetadata;
 import io.awspring.cloud.s3.S3Template;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,16 +16,18 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class S3StorageService {
 
+    private static final String KEY_FORMAT = "documents/%d/%s.pdf";
+
     private final S3Template s3Template;
 
     @Value("${benly.s3.bucket}")
     private String bucket;
 
     public String upload(MultipartFile file, Long userId) {
-        String key = "documents/%d/%s.pdf".formatted(userId, UUID.randomUUID());
+        String key = "KEY_FORMAT".formatted(userId, UUID.randomUUID());
 
         ObjectMetadata metadata = ObjectMetadata.builder()
-                .contentType("application/pdf")
+                .contentType(MediaType.APPLICATION_PDF_VALUE)
                 .contentLength(file.getSize())
                 .build();
 
