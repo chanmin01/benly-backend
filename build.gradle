@@ -41,7 +41,7 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
     // AWS S3 (Spring Cloud AWS)
-    implementation platform("io.awspring.cloud:spring-cloud-aws-dependencies:3.3.0")
+    implementation platform("io.awspring.cloud:spring-cloud-aws-dependencies:4.0.0")
     implementation "io.awspring.cloud:spring-cloud-aws-starter-s3"
 
     // Lombok
