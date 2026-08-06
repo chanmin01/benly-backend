@@ -61,4 +61,8 @@ public class Session extends BaseEntity {
     public void markInProgress() {
         this.status = SessionStatus.IN_PROGRESS;
     }
+
+    public void markCompleted() {
+        this.status = SessionStatus.COMPLETED;
+    }
 }

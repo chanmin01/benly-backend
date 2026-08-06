@@ -46,5 +46,10 @@ public class Answer extends BaseTimeEntity {
     public static Answer createText(Question question, String transcript){
         return new Answer(question, transcript, AnswerType.TEXT, null, null);
     }
+
+
+    public static Answer createAudio(Question question, String transcript, Integer durationSec) {
+        return new Answer(question, transcript, AnswerType.AUDIO, durationSec, "COMPLETED");
+    }
 }
 

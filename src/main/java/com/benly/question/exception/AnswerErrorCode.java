@@ -13,7 +13,8 @@ public enum AnswerErrorCode implements ErrorCode {
     SESSION_NOT_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 면접이 아닙니다."),
     ALREADY_ANSWERED(HttpStatus.CONFLICT, "이미 답변한 질문입니다."),
     ANSWER_TOO_SHORT(HttpStatus.UNPROCESSABLE_CONTENT, "답변이 너무 짧아 평가가 어려워요."),
-    QUESTION_SESSION_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 세션의 질문이 아닙니다.");
+    QUESTION_SESSION_MISMATCH(HttpStatus.BAD_REQUEST, "요청한 세션의 질문이 아닙니다."),
+    INVALID_SEQUENCE(HttpStatus.BAD_REQUEST,  "현재 진행 순서가 아닌 질문입니다.");
 
     private final HttpStatus status;
     private final String message;

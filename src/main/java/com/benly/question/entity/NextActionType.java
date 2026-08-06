@@ -1,4 +1,4 @@
-package com.benly.question.dto;
+package com.benly.question.entity;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
