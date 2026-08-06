@@ -65,4 +65,8 @@ public class Session extends BaseEntity {
     public void markCompleted() {
         this.status = SessionStatus.COMPLETED;
     }
+
+    public void markAnalyzing() {
+        this.status = SessionStatus.ANALYZING;
+    }
 }

@@ -7,9 +7,7 @@ import com.benly.global.exception.BusinessException;
 import com.benly.question.entity.Question;
 import com.benly.question.repository.QuestionRepository;
 import com.benly.question.service.QuestionGenerationService;
-import com.benly.session.dto.SessionCreateRequest;
-import com.benly.session.dto.SessionCreateResponse;
-import com.benly.session.dto.SessionStartResponse;
+import com.benly.session.dto.*;
 import com.benly.session.entity.Session;
 import com.benly.session.entity.SessionStatus;
 import com.benly.session.exception.SessionErrorCode;
@@ -93,6 +91,59 @@ public class SessionService {
 
         // 6. 응답
         return SessionStartResponse.from(session, firstQuestion);
+    }
+
+    // SessionService에 추가
+
+    // 세션 상세 조회
+    @Transactional(readOnly = true)
+    public SessionDetailResponse getSession(Long userId, Long sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_FOUND));
+
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
+        }
+
+        // 진행도 계산 (메인 기준)
+        int total = questionRepository.countBySessionAndParentIsNull(session);
+        int unanswered = questionRepository.findUnansweredMains(sessionId).size();
+        int current = total - unanswered;   // 답변한 메인 수
+
+        return SessionDetailResponse.from(session, current, total);
+    }
+
+    // 질문 생성 상태 폴링
+    @Transactional(readOnly = true)
+    public GenerationStatusResponse getGenerationStatus(Long userId, Long sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_FOUND));
+
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
+        }
+
+        return GenerationStatusResponse.from(session);
+    }
+
+    // 채점 요청 (analyze)
+    @Transactional
+    public AnalyzeResponse analyze(Long userId, Long sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_FOUND));
+
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
+        }
+
+        // COMPLETED만 채점 요청 가능
+        if (session.getStatus() != SessionStatus.COMPLETED) {
+            throw new BusinessException(SessionErrorCode.SESSION_NOT_COMPLETED);
+        }
+
+        session.markAnalyzing();   // ANALYZING
+
+        return AnalyzeResponse.from(session);
     }
 
 

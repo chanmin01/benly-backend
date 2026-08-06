@@ -5,5 +5,7 @@ public enum SessionStatus {
     READY,        // 준비됨
     IN_PROGRESS,  // 진행 중
     FAILED,       // 실패
-    COMPLETED     // 완료
+    COMPLETED,     // 완료
+    CANCELED,     // 폐기
+    ANALYZING     // 채점 요청됨
 }
