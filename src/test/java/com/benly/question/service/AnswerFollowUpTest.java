@@ -26,12 +26,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT) // 불필요한 스터빙 에러 방지
 class AnswerFollowUpTest {
 
-    // 분리된 구조에 맞게 Mock 객체 변경
     @Mock private ClaudeClient claudeClient;
     @Mock private WhisperClient whisperClient;
     @Mock private AnswerCommandService answerCommandService;
@@ -62,8 +62,8 @@ class AnswerFollowUpTest {
         Answer answer = mock(Answer.class);
         given(answer.getQuestion()).willReturn(question);
         given(answer.getTranscript()).willReturn(transcript);
-        given(answer.getInputType()).willReturn(AnswerType.valueOf(inputType));; // 테스트 검증을 위해 추가
-        given(answer.getSttStatus()).willReturn("COMPLETED"); // 테스트 검증을 위해 추가
+        given(answer.getInputType()).willReturn(AnswerType.valueOf(inputType)); // 💡 세미콜론 중복 오타 수정
+        given(answer.getSttStatus()).willReturn("COMPLETED");
         return answer;
     }
 
@@ -80,14 +80,10 @@ class AnswerFollowUpTest {
         AnswerCreateRequest request = new AnswerCreateRequest(100L, "메인 질문에 대한 충분한 답변입니다");
         Answer mockAnswer = mockSavedAnswer(mainQuestion, request.transcript(), "TEXT");
 
-        // 1. 텍스트 답변 저장 모킹
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
-
-        // 2. 꼬리질문 개수 및 Claude 모킹
         given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문입니다");
 
-        // 3. 꼬리질문 저장 모킹
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
         given(answerCommandService.saveFollowUpQuestion(session, mainQuestion, 1, "꼬리질문입니다"))
                 .willReturn(mockNextAction);
@@ -115,9 +111,7 @@ class AnswerFollowUpTest {
         Answer mockAnswer = mockSavedAnswer(followUp1, request.transcript(), "TEXT");
 
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
-        // 이미 꼬리질문이 1개 달린 상태라고 모킹
         given(answerCommandService.countFollowUps(mainQuestion)).willReturn(1);
-
         given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문2");
 
@@ -139,6 +133,7 @@ class AnswerFollowUpTest {
         // given
         Session session = mockSession();
         Question mainQuestion = mock(Question.class);
+        given(mainQuestion.getId()).willReturn(100L); // ID 명시
         Question followUp2 = mock(Question.class);
         given(followUp2.getId()).willReturn(300L);
         given(followUp2.getParent()).willReturn(mainQuestion);
@@ -148,11 +143,12 @@ class AnswerFollowUpTest {
         Answer mockAnswer = mockSavedAnswer(followUp2, request.transcript(), "TEXT");
 
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
-        // 꼬리질문이 2개 꽉 찬 상태라고 모킹
         given(answerCommandService.countFollowUps(mainQuestion)).willReturn(2);
 
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.NEXT_MAIN, 101L);
-        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
+
+        // 💡 수정됨: 엔티티 대신 ID를 파라미터로 넘기도록 변경
+        given(answerCommandService.decideNextMainOrFinish(100L, SESSION_ID)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -168,6 +164,7 @@ class AnswerFollowUpTest {
         // given
         Session session = mockSession();
         Question mainQuestion = mock(Question.class);
+        given(mainQuestion.getId()).willReturn(100L);
         Question followUp2 = mock(Question.class);
         given(followUp2.getId()).willReturn(300L);
         given(followUp2.getParent()).willReturn(mainQuestion);
@@ -179,9 +176,10 @@ class AnswerFollowUpTest {
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
         given(answerCommandService.countFollowUps(mainQuestion)).willReturn(2);
 
-        // 다음 메인이 없어서 FINISH를 반환하도록 모킹
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FINISH, null);
-        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
+
+        // 💡 수정됨: 엔티티 대신 ID를 파라미터로 넘기도록 변경
+        given(answerCommandService.decideNextMainOrFinish(100L, SESSION_ID)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -206,13 +204,12 @@ class AnswerFollowUpTest {
 
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
         given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
-
-        // Claude 오류 발생 모킹
         given(claudeClient.generateFollowUp(anyString())).willThrow(new RuntimeException("Claude 오류"));
 
-        // 예외 발생 시 catch 블록에서 호출되는 메서드 모킹
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.NEXT_MAIN, 101L);
-        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
+
+        // 💡 수정됨: 엔티티 대신 ID를 파라미터로 넘기도록 변경
+        given(answerCommandService.decideNextMainOrFinish(100L, SESSION_ID)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -239,7 +236,6 @@ class AnswerFollowUpTest {
         given(whisperClient.transcribe(any(MultipartFile.class))).willReturn(transcribedText);
 
         Answer mockAnswer = mockSavedAnswer(main, transcribedText, "AUDIO");
-        // durationSec 파라미터 추가된 것 반영
         given(answerCommandService.saveAudioAnswer(SESSION_ID, USER_ID, 100L, transcribedText, durationSec)).willReturn(mockAnswer);
 
         given(answerCommandService.buildContext(main)).willReturn("context");
@@ -248,10 +244,13 @@ class AnswerFollowUpTest {
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
         given(answerCommandService.saveFollowUpQuestion(session, main, 1, "꼬리질문")).willReturn(mockNextAction);
 
-        // when (durationSec 파라미터 추가)
+        // when
         AnswerResponse response = answerService.submitAudioAnswer(SESSION_ID, USER_ID, 100L, audioFile, durationSec);
 
         // then
+        // 💡 추가됨: 보안 검증 로직이 정상 호출되었는지 검증
+        verify(answerCommandService).validateBeforeStt(100L, SESSION_ID, USER_ID);
+
         assertThat(response.answer().inputType()).isEqualTo("AUDIO");
         assertThat(response.answer().transcript()).contains("변환된");
         assertThat(response.answer().sttStatus()).isEqualTo("COMPLETED");

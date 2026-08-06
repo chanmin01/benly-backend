@@ -1,12 +1,12 @@
 package com.benly.question.service;
 
 import com.benly.global.exception.BusinessException;
-import com.benly.question.client.ClaudeClient; // 추가
-import com.benly.question.client.WhisperClient; // 추가
+import com.benly.question.client.ClaudeClient;
+import com.benly.question.client.WhisperClient;
 import com.benly.question.dto.AnswerCreateRequest;
 import com.benly.question.dto.AnswerResponse;
 import com.benly.question.entity.Answer;
-import com.benly.question.entity.AnswerType; // 추가
+import com.benly.question.entity.AnswerType;
 import com.benly.question.entity.NextActionType;
 import com.benly.question.entity.Question;
 import com.benly.question.exception.AnswerErrorCode;
@@ -33,8 +33,6 @@ import static org.mockito.Mockito.verify;
 class AnswerServiceTest {
 
     @Mock private AnswerCommandService answerCommandService;
-
-    // 💡 추가됨: AnswerService 내부에서 직접 호출되는 클라이언트들
     @Mock private ClaudeClient claudeClient;
     @Mock private WhisperClient whisperClient;
 
@@ -46,57 +44,40 @@ class AnswerServiceTest {
     private static final Long QUESTION_ID = 100L;
     private static final String VALID_TRANSCRIPT = "재고 차감 로직에서 동시 요청이 몰리는 문제가 있었습니다";
 
-    // 헬퍼 메서드: 성공 시 리턴할 Answer 객체 모킹
     private Answer mockAnswer() {
         Answer answer = mock(Answer.class);
         Question question = mock(Question.class);
         Session session = mock(Session.class);
 
-        // 기본 정보 모킹
         given(answer.getTranscript()).willReturn(VALID_TRANSCRIPT);
         given(answer.getQuestion()).willReturn(question);
         given(question.getSession()).willReturn(session);
-        given(question.getParent()).willReturn(null); // 메인 질문으로 가정
-
-        // 💡 추가됨: AnswerResponse.from() 변환 시 발생하는 NPE 방지
+        given(question.getParent()).willReturn(null);
         given(answer.getInputType()).willReturn(AnswerType.TEXT);
         given(answer.getSttStatus()).willReturn("COMPLETED");
 
         return answer;
     }
 
-    // ===== 성공 =====
-
     @Test
     @DisplayName("성공 - 텍스트 답변 저장")
     void success() {
-        // given
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
         Answer mockAnswer = mockAnswer();
         AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
 
-        // CommandService 동작 모킹
         given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
         given(answerCommandService.buildContext(any())).willReturn("context");
-
-        // 💡 추가됨: tryCreateFollowUp 내부에서 호출되는 ClaudeClient 모킹
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문입니다");
-
-        // 💡 추가됨: Claude 호출 성공 후 실행되는 저장 로직 모킹
         given(answerCommandService.saveFollowUpQuestion(any(), any(), any(Integer.class), anyString()))
                 .willReturn(mockNextAction);
 
-        // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
 
-        // then
         verify(answerCommandService).saveTextAnswer(SESSION_ID, USER_ID, request);
         assertThat(response.answer().transcript()).contains("재고 차감");
         assertThat(response.nextAction().type()).isEqualTo(NextActionType.FOLLOW_UP);
     }
-
-    // ===== 실패 케이스 (AnswerCommandService가 예외를 던지는 상황 모킹) =====
-    // ... (이하 실패 테스트 6개는 이전 코드와 동일하게 유지)
 
     @Test
     @DisplayName("실패 - 질문이 없으면 QUESTION_NOT_FOUND")

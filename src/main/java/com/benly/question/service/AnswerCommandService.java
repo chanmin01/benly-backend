@@ -12,6 +12,7 @@ import com.benly.question.repository.AnswerRepository;
 import com.benly.question.repository.QuestionRepository;
 import com.benly.session.entity.Session;
 import com.benly.session.entity.SessionStatus;
+import com.benly.session.repository.SessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -27,8 +28,15 @@ public class AnswerCommandService {
 
     private final AnswerRepository answerRepository;
     private final QuestionRepository questionRepository;
+    private final SessionRepository sessionRepository; // 세션 상태 변경(Dirty Checking)을 위한 의존성 추가
 
     private static final int MIN_ANSWER_LENGTH = 10;
+
+
+    @Transactional(readOnly = true)
+    public void validateBeforeStt(Long questionId, Long sessionId, Long userId) {
+        validateAndGetQuestion(questionId, sessionId, userId);
+    }
 
     @Transactional
     public Answer saveTextAnswer(Long sessionId, Long userId, AnswerCreateRequest request) {
@@ -92,6 +100,9 @@ public class AnswerCommandService {
             throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
         }
 
+        // 6. 순서 검증 (현재 답변해야 할 질문이 맞는지)
+        verifyCurrentQuestionSequence(question, session);
+
         return question;
     }
 
@@ -131,8 +142,15 @@ public class AnswerCommandService {
     }
 
     // 다음 메인 or 종료 판단 및 상태 변경도 독립 트랜잭션 사용
+    // [Data Integrity 피드백 반영] 엔티티 대신 식별자(ID)를 받아 새 트랜잭션 안에서 DB를 다시 조회합니다.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public AnswerResponse.NextAction decideNextMainOrFinish(Question mainQuestion, Session session) {
+    public AnswerResponse.NextAction decideNextMainOrFinish(Long mainQuestionId, Long sessionId) {
+        // 1. 새 트랜잭션에서 세션과 질문을 영속 상태(Managed)로 다시 조회
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(AnswerErrorCode.QUESTION_SESSION_MISMATCH));
+        Question mainQuestion = questionRepository.findById(mainQuestionId)
+                .orElseThrow(() -> new BusinessException(AnswerErrorCode.QUESTION_NOT_FOUND));
+
         Optional<Question> nextMain = questionRepository
                 .findFirstBySessionAndParentIsNullAndSeqGreaterThanOrderBySeqAsc(
                         session, mainQuestion.getSeq());
@@ -143,7 +161,29 @@ public class AnswerCommandService {
         }
 
         // 다음 메인 없음 → 면접 종료
+        // 영속 상태의 엔티티를 수정하므로 트랜잭션 종료 시 DB에 COMPLETED 업데이트 쿼리가 정상적으로 발생합니다.
         session.markCompleted();
         return AnswerResponse.NextAction.of(NextActionType.FINISH, null);
+    }
+
+    private void verifyCurrentQuestionSequence(Question targetQuestion, Session session) {
+        Question expectedQuestion = null;
+
+        // 1순위: 답변을 기다리는 꼬리질문 확인 (생성 즉시 답변 대상이 됨)
+        List<Question> unansweredFollowUps = questionRepository.findUnansweredFollowUps(session.getId());
+        if (!unansweredFollowUps.isEmpty()) {
+            expectedQuestion = unansweredFollowUps.get(0);
+        } else {
+            // 2순위: 꼬리질문이 없다면, 답변 없는 메인 질문 중 seq가 가장 앞선 것
+            List<Question> unansweredMains = questionRepository.findUnansweredMains(session.getId());
+            if (!unansweredMains.isEmpty()) {
+                expectedQuestion = unansweredMains.get(0);
+            }
+        }
+
+        // 기대되는 질문이 없거나(모두 답변 완료), 요청된 질문의 ID와 다르면 우회 시도로 간주하고 예외 발생
+        if (expectedQuestion == null || !expectedQuestion.getId().equals(targetQuestion.getId())) {
+            throw new BusinessException(AnswerErrorCode.INVALID_SEQUENCE);
+        }
     }
 }

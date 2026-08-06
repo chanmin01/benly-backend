@@ -35,13 +35,16 @@ public class AnswerService {
     }
 
     public AnswerResponse submitAudioAnswer(Long sessionId, Long userId, Long questionId, MultipartFile audioFile, Integer durationSec) {
-        // 1. 음성 → 텍스트 (Whisper) - 트랜잭션이 없는 상태에서 긴 시간동안 API 호출 진행
+        // 1. 외부 API(Whisper) 호출 전 권한, 상태 등 사전 검증 (비인가자의 리소스 소모 차단)
+        answerCommandService.validateBeforeStt(questionId, sessionId, userId);
+
+        // 2. 음성 → 텍스트 (Whisper) - 트랜잭션이 없는 상태에서 긴 시간동안 API 호출 진행
         String transcript = whisperClient.transcribe(audioFile);
 
-        // 2. 저장 (saveAndFlush + 동시성) - 짧은 트랜잭션 수행 후 커밋
+        // 3. 저장 (saveAndFlush + 동시성) - 짧은 트랜잭션 수행 후 커밋
         Answer savedAnswer = answerCommandService.saveAudioAnswer(sessionId, userId, questionId, transcript, durationSec);
 
-        // 3. nextAction (트랜잭션 밖에서 Claude 호출 및 다음 상태 결정)
+        // 4. nextAction (트랜잭션 밖에서 Claude 호출 및 다음 상태 결정)
         AnswerResponse.NextAction nextAction = decideNextAction(savedAnswer.getQuestion(), savedAnswer.getQuestion().getSession());
 
         return AnswerResponse.from(savedAnswer, nextAction);
@@ -64,8 +67,8 @@ public class AnswerService {
             return tryCreateFollowUp(mainQuestion, session, followUpCount + 1);
         }
 
-        // 꼬리 2개 다 함 → 다음 메인 or FINISH
-        return answerCommandService.decideNextMainOrFinish(mainQuestion, session);
+        // 꼬리 2개 다 함 → 다음 메인 or FINISH (엔티티 대신 식별자 ID를 넘김)
+        return answerCommandService.decideNextMainOrFinish(mainQuestion.getId(), session.getId());
     }
 
     // 꼬리질문 생성 시도 (실패해도 답변은 유지, 다음 메인으로)
@@ -80,7 +83,9 @@ public class AnswerService {
         } catch (Exception e) {
             // 꼬리 생성 실패 → 메인 답변은 이미 커밋되어 저장됨, 다음 메인으로 넘어감
             log.warn("꼬리질문 생성 실패, 다음 메인으로 진행. mainQuestionId={}", mainQuestion.getId(), e);
-            return answerCommandService.decideNextMainOrFinish(mainQuestion, session);
+
+            // 엔티티 대신 식별자 ID를 넘김
+            return answerCommandService.decideNextMainOrFinish(mainQuestion.getId(), session.getId());
         }
     }
 }
