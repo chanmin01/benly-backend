@@ -5,10 +5,9 @@ import com.benly.question.client.WhisperClient;
 import com.benly.question.dto.AnswerCreateRequest;
 import com.benly.question.dto.AnswerResponse;
 import com.benly.question.entity.Answer;
+import com.benly.question.entity.AnswerType;
 import com.benly.question.entity.NextActionType;
 import com.benly.question.entity.Question;
-import com.benly.question.repository.AnswerRepository;
-import com.benly.question.repository.QuestionRepository;
 import com.benly.session.entity.Session;
 import com.benly.session.entity.SessionStatus;
 import com.benly.user.entity.User;
@@ -23,23 +22,19 @@ import org.mockito.quality.Strictness;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT) // 불필요한 스터빙 에러(UnnecessaryStubbing) 방지 추가
+@MockitoSettings(strictness = Strictness.LENIENT) // 불필요한 스터빙 에러 방지
 class AnswerFollowUpTest {
 
-    @Mock private AnswerRepository answerRepository;
-    @Mock private QuestionRepository questionRepository;
+    // 분리된 구조에 맞게 Mock 객체 변경
     @Mock private ClaudeClient claudeClient;
     @Mock private WhisperClient whisperClient;
+    @Mock private AnswerCommandService answerCommandService;
 
     @InjectMocks
     private AnswerService answerService;
@@ -55,21 +50,21 @@ class AnswerFollowUpTest {
 
     private Session mockSession() {
         Session session = mock(Session.class);
-
         User user = mockUser();
-
         given(session.getId()).willReturn(SESSION_ID);
         given(session.getUser()).willReturn(user);
         given(session.getStatus()).willReturn(SessionStatus.IN_PROGRESS);
         return session;
     }
 
-    private void stubCommonChecks(Question question) {
-        given(questionRepository.findById(question.getId()))
-                .willReturn(Optional.of(question));
-        given(answerRepository.existsByQuestionId(question.getId())).willReturn(false);
-        given(answerRepository.saveAndFlush(any(Answer.class)))
-                .willAnswer(inv -> inv.getArgument(0));
+    // 공통적으로 사용되는 Answer 모킹 헬퍼 메서드
+    private Answer mockSavedAnswer(Question question, String transcript, String inputType) {
+        Answer answer = mock(Answer.class);
+        given(answer.getQuestion()).willReturn(question);
+        given(answer.getTranscript()).willReturn(transcript);
+        given(answer.getInputType()).willReturn(AnswerType.valueOf(inputType));; // 테스트 검증을 위해 추가
+        given(answer.getSttStatus()).willReturn("COMPLETED"); // 테스트 검증을 위해 추가
+        return answer;
     }
 
     @Test
@@ -77,26 +72,25 @@ class AnswerFollowUpTest {
     void mainAnswer_createsFollowUp() {
         // given
         Session session = mockSession();
-
         Question mainQuestion = mock(Question.class);
         given(mainQuestion.getId()).willReturn(100L);
         given(mainQuestion.getParent()).willReturn(null);
-        given(mainQuestion.getContent()).willReturn("메인 질문입니다");
         given(mainQuestion.getSession()).willReturn(session);
 
-        stubCommonChecks(mainQuestion);
+        AnswerCreateRequest request = new AnswerCreateRequest(100L, "메인 질문에 대한 충분한 답변입니다");
+        Answer mockAnswer = mockSavedAnswer(mainQuestion, request.transcript(), "TEXT");
 
+        // 1. 텍스트 답변 저장 모킹
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+
+        // 2. 꼬리질문 개수 및 Claude 모킹
+        given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문입니다");
 
-        Question savedFollowUp = mock(Question.class);
-        given(savedFollowUp.getId()).willReturn(200L);
-        given(questionRepository.save(any(Question.class))).willReturn(savedFollowUp);
-
-        given(answerRepository.findByQuestionId(100L)).willReturn(Optional.empty());
-        given(questionRepository.findByParentOrderBySeqAsc(mainQuestion))
-                .willReturn(List.of());
-
-        AnswerCreateRequest request = new AnswerCreateRequest(100L, "메인 질문에 대한 충분한 답변입니다");
+        // 3. 꼬리질문 저장 모킹
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
+        given(answerCommandService.saveFollowUpQuestion(session, mainQuestion, 1, "꼬리질문입니다"))
+                .willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -111,29 +105,25 @@ class AnswerFollowUpTest {
     void followUp1Answer_createsFollowUp2() {
         // given
         Session session = mockSession();
-
         Question mainQuestion = mock(Question.class);
-        given(mainQuestion.getId()).willReturn(100L);
-        given(mainQuestion.getContent()).willReturn("메인 질문");
-
         Question followUp1 = mock(Question.class);
         given(followUp1.getId()).willReturn(200L);
         given(followUp1.getParent()).willReturn(mainQuestion);
         given(followUp1.getSession()).willReturn(session);
 
-        stubCommonChecks(followUp1);
+        AnswerCreateRequest request = new AnswerCreateRequest(200L, "꼬리1에 대한 답변입니다");
+        Answer mockAnswer = mockSavedAnswer(followUp1, request.transcript(), "TEXT");
 
-        given(questionRepository.countByParent(mainQuestion)).willReturn(1);
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+        // 이미 꼬리질문이 1개 달린 상태라고 모킹
+        given(answerCommandService.countFollowUps(mainQuestion)).willReturn(1);
+
+        given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문2");
 
-        Question savedFollowUp2 = mock(Question.class);
-        given(savedFollowUp2.getId()).willReturn(300L);
-        given(questionRepository.save(any(Question.class))).willReturn(savedFollowUp2);
-
-        given(answerRepository.findByQuestionId(any())).willReturn(Optional.empty());
-        given(questionRepository.findByParentOrderBySeqAsc(mainQuestion)).willReturn(List.of());
-
-        AnswerCreateRequest request = new AnswerCreateRequest(200L, "꼬리1에 대한 답변입니다");
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 300L);
+        given(answerCommandService.saveFollowUpQuestion(session, mainQuestion, 2, "꼬리질문2"))
+                .willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -148,26 +138,21 @@ class AnswerFollowUpTest {
     void followUp2Answer_nextMain() {
         // given
         Session session = mockSession();
-
         Question mainQuestion = mock(Question.class);
-        given(mainQuestion.getId()).willReturn(100L);
-        given(mainQuestion.getSeq()).willReturn(1);
-
         Question followUp2 = mock(Question.class);
         given(followUp2.getId()).willReturn(300L);
         given(followUp2.getParent()).willReturn(mainQuestion);
         given(followUp2.getSession()).willReturn(session);
 
-        stubCommonChecks(followUp2);
-
-        given(questionRepository.countByParent(mainQuestion)).willReturn(2);
-
-        Question nextMain = mock(Question.class);
-        given(nextMain.getId()).willReturn(101L);
-        given(questionRepository.findFirstBySessionAndParentIsNullAndSeqGreaterThanOrderBySeqAsc(
-                session, 1)).willReturn(Optional.of(nextMain));
-
         AnswerCreateRequest request = new AnswerCreateRequest(300L, "꼬리2에 대한 답변입니다");
+        Answer mockAnswer = mockSavedAnswer(followUp2, request.transcript(), "TEXT");
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+        // 꼬리질문이 2개 꽉 찬 상태라고 모킹
+        given(answerCommandService.countFollowUps(mainQuestion)).willReturn(2);
+
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.NEXT_MAIN, 101L);
+        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -182,25 +167,21 @@ class AnswerFollowUpTest {
     void lastFollowUp2Answer_finish() {
         // given
         Session session = mockSession();
-
         Question mainQuestion = mock(Question.class);
-        given(mainQuestion.getId()).willReturn(100L);
-        given(mainQuestion.getSeq()).willReturn(5);
-
         Question followUp2 = mock(Question.class);
         given(followUp2.getId()).willReturn(300L);
         given(followUp2.getParent()).willReturn(mainQuestion);
         given(followUp2.getSession()).willReturn(session);
 
-        stubCommonChecks(followUp2);
-
-        given(questionRepository.countByParent(mainQuestion)).willReturn(2);
-
-        given(questionRepository.findFirstBySessionAndParentIsNullAndSeqGreaterThanOrderBySeqAsc(
-                session, 5)).willReturn(Optional.empty());
-
-        // BusinessException 방지를 위해 문자열 길이를 늘렸습니다.
         AnswerCreateRequest request = new AnswerCreateRequest(300L, "마지막 꼬리질문에 대한 충분한 길이의 답변입니다.");
+        Answer mockAnswer = mockSavedAnswer(followUp2, request.transcript(), "TEXT");
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+        given(answerCommandService.countFollowUps(mainQuestion)).willReturn(2);
+
+        // 다음 메인이 없어서 FINISH를 반환하도록 모킹
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FINISH, null);
+        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -215,28 +196,23 @@ class AnswerFollowUpTest {
     void followUpFails_stillProceeds() {
         // given
         Session session = mockSession();
-
         Question mainQuestion = mock(Question.class);
         given(mainQuestion.getId()).willReturn(100L);
-        given(mainQuestion.getSeq()).willReturn(1);
-        given(mainQuestion.getContent()).willReturn("메인 질문");
         given(mainQuestion.getParent()).willReturn(null);
         given(mainQuestion.getSession()).willReturn(session);
 
-        stubCommonChecks(mainQuestion);
-
-        given(claudeClient.generateFollowUp(anyString()))
-                .willThrow(new RuntimeException("Claude 오류"));
-
-        given(answerRepository.findByQuestionId(any())).willReturn(Optional.empty());
-        given(questionRepository.findByParentOrderBySeqAsc(mainQuestion)).willReturn(List.of());
-
-        Question nextMain = mock(Question.class);
-        given(nextMain.getId()).willReturn(101L);
-        given(questionRepository.findFirstBySessionAndParentIsNullAndSeqGreaterThanOrderBySeqAsc(
-                session, 1)).willReturn(Optional.of(nextMain));
-
         AnswerCreateRequest request = new AnswerCreateRequest(100L, "메인 질문에 대한 답변입니다");
+        Answer mockAnswer = mockSavedAnswer(mainQuestion, request.transcript(), "TEXT");
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+        given(answerCommandService.buildContext(mainQuestion)).willReturn("context");
+
+        // Claude 오류 발생 모킹
+        given(claudeClient.generateFollowUp(anyString())).willThrow(new RuntimeException("Claude 오류"));
+
+        // 예외 발생 시 catch 블록에서 호출되는 메서드 모킹
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.NEXT_MAIN, 101L);
+        given(answerCommandService.decideNextMainOrFinish(mainQuestion, session)).willReturn(mockNextAction);
 
         // when
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
@@ -249,33 +225,31 @@ class AnswerFollowUpTest {
     @Test
     @DisplayName("음성 답변 → Whisper 변환 후 저장 (AUDIO)")
     void audioAnswer_transcribesAndSaves() {
+        // given
         Session session = mockSession();
-
         Question main = mock(Question.class);
         given(main.getId()).willReturn(100L);
         given(main.getParent()).willReturn(null);
-        given(main.getContent()).willReturn("메인 질문");
         given(main.getSession()).willReturn(session);
 
-        stubCommonChecks(main);
+        MultipartFile audioFile = new MockMultipartFile("audio", "answer.m4a", "audio/m4a", "dummy audio bytes".getBytes());
+        String transcribedText = "음성에서 변환된 충분한 길이의 답변입니다";
+        Integer durationSec = 10;
 
-        // Whisper가 음성 → 텍스트 변환
-        given(whisperClient.transcribe(any(MultipartFile.class)))
-                .willReturn("음성에서 변환된 충분한 길이의 답변입니다");
+        given(whisperClient.transcribe(any(MultipartFile.class))).willReturn(transcribedText);
 
+        Answer mockAnswer = mockSavedAnswer(main, transcribedText, "AUDIO");
+        // durationSec 파라미터 추가된 것 반영
+        given(answerCommandService.saveAudioAnswer(SESSION_ID, USER_ID, 100L, transcribedText, durationSec)).willReturn(mockAnswer);
+
+        given(answerCommandService.buildContext(main)).willReturn("context");
         given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문");
-        Question savedFollowUp = mock(Question.class);
-        given(savedFollowUp.getId()).willReturn(200L);
-        given(questionRepository.save(any(Question.class))).willReturn(savedFollowUp);
-        given(answerRepository.findByQuestionId(any())).willReturn(Optional.empty());
-        given(questionRepository.findByParentOrderBySeqAsc(main)).willReturn(List.of());
 
-        MultipartFile audioFile = new MockMultipartFile(
-                "audio", "answer.m4a", "audio/m4a", "dummy audio bytes".getBytes());
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
+        given(answerCommandService.saveFollowUpQuestion(session, main, 1, "꼬리질문")).willReturn(mockNextAction);
 
-        // when
-        AnswerResponse response = answerService.submitAudioAnswer(
-                SESSION_ID, USER_ID, 100L, audioFile);
+        // when (durationSec 파라미터 추가)
+        AnswerResponse response = answerService.submitAudioAnswer(SESSION_ID, USER_ID, 100L, audioFile, durationSec);
 
         // then
         assertThat(response.answer().inputType()).isEqualTo("AUDIO");

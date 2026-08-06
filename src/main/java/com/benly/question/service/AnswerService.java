@@ -1,143 +1,53 @@
 package com.benly.question.service;
 
-import com.benly.global.exception.BusinessException;
 import com.benly.question.client.ClaudeClient;
 import com.benly.question.client.WhisperClient;
 import com.benly.question.dto.AnswerCreateRequest;
 import com.benly.question.dto.AnswerResponse;
-import com.benly.question.entity.NextActionType;
 import com.benly.question.entity.Answer;
 import com.benly.question.entity.Question;
-import com.benly.question.entity.QuestionSourceType;
-import com.benly.question.exception.AnswerErrorCode;
-import com.benly.question.repository.AnswerRepository;
-import com.benly.question.repository.QuestionRepository;
 import com.benly.session.entity.Session;
-import com.benly.session.entity.SessionStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+// 클래스 레벨의 @Transactional을 제거하여 외부 API 통신 중 커넥션 점유를 막습니다.
 public class AnswerService {
 
-    private final AnswerRepository answerRepository;
-    private final QuestionRepository questionRepository;
     private final ClaudeClient claudeClient;
     private final WhisperClient whisperClient;
+    private final AnswerCommandService answerCommandService; // DB 트랜잭션을 담당할 별도 빈 주입
 
-    private static final int MIN_ANSWER_LENGTH = 10;
     private static final int MAX_FOLLOW_UP = 2;
 
-    @Transactional
     public AnswerResponse submitTextAnswer(Long sessionId, Long userId, AnswerCreateRequest request) {
+        // 1. 답변 DB 저장 (짧은 트랜잭션 수행 후 커밋)
+        Answer savedAnswer = answerCommandService.saveTextAnswer(sessionId, userId, request);
 
-        // 1. 질문조회
-        Question question = questionRepository.findById(request.questionId())
-                .orElseThrow(() -> new BusinessException(AnswerErrorCode.QUESTION_NOT_FOUND));
-
-        Session session = question.getSession();
-
-        // 2. URL의 sessionId와 질문의 세션이 일치하는지
-        if (!session.getId().equals(sessionId)) {
-            throw new BusinessException(AnswerErrorCode.QUESTION_SESSION_MISMATCH);
-        }
-
-        // 3. 소유권 검증
-        if (!session.getUser().getId().equals(userId)){
-            throw new BusinessException(AnswerErrorCode.ANSWER_FORBIDDEN);
-        }
-
-        // 4. 세션 상태 검증 (IN_PROGRESS)
-        if (session.getStatus() != SessionStatus.IN_PROGRESS) {
-            throw new BusinessException(AnswerErrorCode.SESSION_NOT_IN_PROGRESS);
-        }
-
-        // 5. 중복 검증
-        if (answerRepository.existsByQuestionId(question.getId())) {
-            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
-        }
-
-        // 6. 길이 검증
-        if (request.transcript().trim().length() < MIN_ANSWER_LENGTH) {
-            throw new BusinessException(AnswerErrorCode.ANSWER_TOO_SHORT);
-        }
-
-        // 7. Answer 저장
-        Answer answer = Answer.createText(question, request.transcript().trim());
-        Answer savedAnswer;
-        try{
-            // 저장 및 flush (동시성 제어)
-            savedAnswer =  answerRepository.saveAndFlush(answer);
-        } catch (DataIntegrityViolationException ex){
-            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
-        }
-
-        AnswerResponse.NextAction nextAction = decideNextAction(question, session);
+        // 2. nextAction (트랜잭션 밖에서 Claude 호출 및 다음 상태 결정)
+        AnswerResponse.NextAction nextAction = decideNextAction(savedAnswer.getQuestion(), savedAnswer.getQuestion().getSession());
 
         return AnswerResponse.from(savedAnswer, nextAction);
     }
 
-    @Transactional
-    public AnswerResponse submitAudioAnswer(Long sessionId, Long userId, Long questionId, MultipartFile audioFile) {
-        // 1. 질문 조회
-        Question question = questionRepository.findById(questionId)
-                .orElseThrow(() -> new BusinessException(AnswerErrorCode.QUESTION_NOT_FOUND));
-
-        Session session = question.getSession();
-
-
-        // 2. 세션 일치
-        if (!session.getId().equals(sessionId)) {
-            throw new BusinessException(AnswerErrorCode.QUESTION_SESSION_MISMATCH);
-        }
-        // 3. 소유권
-        if (!session.getUser().getId().equals(userId)) {
-            throw new BusinessException(AnswerErrorCode.ANSWER_FORBIDDEN);
-        }
-        // 4. 상태
-        if (session.getStatus() != SessionStatus.IN_PROGRESS) {
-            throw new BusinessException(AnswerErrorCode.SESSION_NOT_IN_PROGRESS);
-        }
-        // 5. 중복
-        if (answerRepository.existsByQuestionId(question.getId())) {
-            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
-        }
-
-        // 6. 음성 → 텍스트 (Whisper)
+    public AnswerResponse submitAudioAnswer(Long sessionId, Long userId, Long questionId, MultipartFile audioFile, Integer durationSec) {
+        // 1. 음성 → 텍스트 (Whisper) - 트랜잭션이 없는 상태에서 긴 시간동안 API 호출 진행
         String transcript = whisperClient.transcribe(audioFile);
 
-        // 7. 길이 검증
-        if (transcript.trim().length() < MIN_ANSWER_LENGTH) {
-            throw new BusinessException(AnswerErrorCode.ANSWER_TOO_SHORT);
-        }
+        // 2. 저장 (saveAndFlush + 동시성) - 짧은 트랜잭션 수행 후 커밋
+        Answer savedAnswer = answerCommandService.saveAudioAnswer(sessionId, userId, questionId, transcript, durationSec);
 
-        // 8. 저장 (saveAndFlush + 동시성)
-        Answer answer = Answer.createAudio(question, transcript.trim(), null);
-        Answer savedAnswer;
-        try {
-            savedAnswer = answerRepository.saveAndFlush(answer);
-        } catch (DataIntegrityViolationException ex) {
-            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
-        }
-
-        // 9. nextAction
-        AnswerResponse.NextAction nextAction = decideNextAction(question, session);
+        // 3. nextAction (트랜잭션 밖에서 Claude 호출 및 다음 상태 결정)
+        AnswerResponse.NextAction nextAction = decideNextAction(savedAnswer.getQuestion(), savedAnswer.getQuestion().getSession());
 
         return AnswerResponse.from(savedAnswer, nextAction);
     }
 
-    private AnswerResponse.NextAction decideNextAction(Question answeredQuestion,
-                                                       Session session) {
+    private AnswerResponse.NextAction decideNextAction(Question answeredQuestion, Session session) {
         boolean isMain = (answeredQuestion.getParent() == null);
 
         if (isMain) {
@@ -147,7 +57,7 @@ public class AnswerService {
 
         // 꼬리에 답변 → 그 메인의 꼬리 개수 확인
         Question mainQuestion = answeredQuestion.getParent();
-        int followUpCount = questionRepository.countByParent(mainQuestion);
+        int followUpCount = answerCommandService.countFollowUps(mainQuestion);
 
         if (followUpCount < MAX_FOLLOW_UP) {
             // 꼬리2 생성 시도
@@ -155,63 +65,22 @@ public class AnswerService {
         }
 
         // 꼬리 2개 다 함 → 다음 메인 or FINISH
-        return decideNextMainOrFinish(mainQuestion, session);
+        return answerCommandService.decideNextMainOrFinish(mainQuestion, session);
     }
 
     // 꼬리질문 생성 시도 (실패해도 답변은 유지, 다음 메인으로)
-    private AnswerResponse.NextAction tryCreateFollowUp(Question mainQuestion,
-                                                        Session session, int followUpSeq) {
+    private AnswerResponse.NextAction tryCreateFollowUp(Question mainQuestion, Session session, int followUpSeq) {
         try {
-            String context = buildContext(mainQuestion);
+            String context = answerCommandService.buildContext(mainQuestion);
+            // 외부 트랜잭션 밖에서 수 초 대기하며 Claude API 호출
             String content = claudeClient.generateFollowUp(context);
 
-            Question followUp = Question.createFollowUp(
-                    session, mainQuestion, followUpSeq, content, QuestionSourceType.CLAUDE);
-            Question savedFollowUp = questionRepository.save(followUp);
-
-            return AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, savedFollowUp.getId());
+            // API 호출 성공 시 독립된 새 트랜잭션(REQUIRES_NEW)으로 DB에 꼬리질문 저장
+            return answerCommandService.saveFollowUpQuestion(session, mainQuestion, followUpSeq, content);
         } catch (Exception e) {
-            // 꼬리 생성 실패 → 답변은 이미 저장됨, 다음 메인으로 넘어감
-            log.warn("꼬리질문 생성 실패, 다음 메인으로 진행. mainQuestionId={}",
-                    mainQuestion.getId(), e);
-            return decideNextMainOrFinish(mainQuestion, session);
+            // 꼬리 생성 실패 → 메인 답변은 이미 커밋되어 저장됨, 다음 메인으로 넘어감
+            log.warn("꼬리질문 생성 실패, 다음 메인으로 진행. mainQuestionId={}", mainQuestion.getId(), e);
+            return answerCommandService.decideNextMainOrFinish(mainQuestion, session);
         }
-    }
-
-    // 다음 메인 or 종료
-    private AnswerResponse.NextAction decideNextMainOrFinish(Question mainQuestion,
-                                                             Session session) {
-        Optional<Question> nextMain = questionRepository
-                .findFirstBySessionAndParentIsNullAndSeqGreaterThanOrderBySeqAsc(
-                        session, mainQuestion.getSeq());
-
-        if (nextMain.isPresent()) {
-            return AnswerResponse.NextAction.of(
-                    NextActionType.NEXT_MAIN, nextMain.get().getId());
-        }
-
-        // 다음 메인 없음 → 면접 종료
-        session.markCompleted();
-        return AnswerResponse.NextAction.of(NextActionType.FINISH, null);
-    }
-
-    // Claude에 줄 맥락 (메인 답변 + 이전 꼬리들 + 답변)
-    private String buildContext(Question mainQuestion) {
-        StringBuilder sb = new StringBuilder();
-
-        // 메인 질문 + 답변
-        sb.append("메인 질문: ").append(mainQuestion.getContent()).append("\n");
-        answerRepository.findByQuestionId(mainQuestion.getId())
-                .ifPresent(a -> sb.append("답변: ").append(a.getTranscript()).append("\n"));
-
-        // 꼬리질문들 + 답변
-        List<Question> followUps = questionRepository.findByParentOrderBySeqAsc(mainQuestion);
-        for (Question fu : followUps) {
-            sb.append("꼬리질문: ").append(fu.getContent()).append("\n");
-            answerRepository.findByQuestionId(fu.getId())
-                    .ifPresent(a -> sb.append("답변: ").append(a.getTranscript()).append("\n"));
-        }
-
-        return sb.toString();
     }
 }

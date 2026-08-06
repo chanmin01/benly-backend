@@ -32,9 +32,10 @@ public class AnswerController {
             @PathVariable Long sessionId,
             @RequestParam Long questionId,
             @AuthenticationPrincipal Long userId,
-            @RequestParam("audio") MultipartFile audioFile) {
+            @RequestParam("audio") MultipartFile audioFile,
+            @RequestParam(value = "durationSec", required = false) Integer durationSec) {
         AnswerResponse data = answerService.submitAudioAnswer(
-                sessionId, userId, questionId, audioFile);
+                sessionId, userId, questionId, audioFile, durationSec);
         return ApiResponse.success("음성 답변이 저장되었습니다.", data);
     }
 }

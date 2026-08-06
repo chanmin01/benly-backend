@@ -58,6 +58,11 @@ public class WhisperClient {
                     .retrieve()
                     .body(WhisperResponse.class);
 
+            if (response == null || response.text() == null) {
+                // 단순 NPE 대신 외부 API 연동 에러임을 명확히 알 수 있는 예외를 던집니다.
+                throw new IllegalStateException("Whisper API 응답이 비어있습니다.");
+            }
+
             return response.text();
 
         } catch (IOException e) {
@@ -65,7 +70,7 @@ public class WhisperClient {
         }
     }
 
-    // Whisper 응답
+    // Whisper 응답 (text 필드만)
     private record WhisperResponse(String text) {
     }
 }
