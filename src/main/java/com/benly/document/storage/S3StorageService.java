@@ -24,7 +24,7 @@ public class S3StorageService {
     private String bucket;
 
     public String upload(MultipartFile file, Long userId) {
-        String key = "KEY_FORMAT".formatted(userId, UUID.randomUUID());
+        String key = KEY_FORMAT.formatted(userId, UUID.randomUUID());
 
         ObjectMetadata metadata = ObjectMetadata.builder()
                 .contentType(MediaType.APPLICATION_PDF_VALUE)
