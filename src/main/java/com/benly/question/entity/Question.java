@@ -61,4 +61,8 @@ public class Question extends BaseTimeEntity {
                                       QuestionSourceType sourceType) {
         return new Question(session, null, "MAIN", null, seq, content, null, sourceType);
     }
+
+    public static Question createFollowUp(Session session, Question parent, Integer seq, String content, QuestionSourceType sourceType) {
+        return new  Question(session, parent, "Follow_UP", null, seq, content, null, sourceType);
+    }
 }

@@ -1,16 +1,16 @@
 package com.benly.question.service;
 
 import com.benly.global.exception.BusinessException;
+import com.benly.question.client.ClaudeClient;
+import com.benly.question.client.WhisperClient;
 import com.benly.question.dto.AnswerCreateRequest;
 import com.benly.question.dto.AnswerResponse;
 import com.benly.question.entity.Answer;
+import com.benly.question.entity.AnswerType;
+import com.benly.question.entity.NextActionType;
 import com.benly.question.entity.Question;
 import com.benly.question.exception.AnswerErrorCode;
-import com.benly.question.repository.AnswerRepository;
-import com.benly.question.repository.QuestionRepository;
 import com.benly.session.entity.Session;
-import com.benly.session.entity.SessionStatus;
-import com.benly.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,21 +20,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT) // 불필요한 스터빙 에러(UnnecessaryStubbing) 방지
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AnswerServiceTest {
 
-    @Mock private AnswerRepository answerRepository;
-    @Mock private QuestionRepository questionRepository;
+    @Mock private AnswerCommandService answerCommandService;
+    @Mock private ClaudeClient claudeClient;
+    @Mock private WhisperClient whisperClient;
 
     @InjectMocks
     private AnswerService answerService;
@@ -44,60 +44,48 @@ class AnswerServiceTest {
     private static final Long QUESTION_ID = 100L;
     private static final String VALID_TRANSCRIPT = "재고 차감 로직에서 동시 요청이 몰리는 문제가 있었습니다";
 
-    // 정상 상태의 Mock들을 만드는 헬퍼 (각 테스트에서 필요한 것만 덮어씀)
-    private User mockUser(Long id) {
-        User user = mock(User.class);
-        given(user.getId()).willReturn(id);
-        return user;
-    }
-
-    private Session mockSession(User owner, SessionStatus status) {
-        Session session = mock(Session.class);
-        given(session.getId()).willReturn(SESSION_ID);
-        given(session.getUser()).willReturn(owner);
-        given(session.getStatus()).willReturn(status);
-        return session;
-    }
-
-    private Question mockQuestion(Session session) {
+    private Answer mockAnswer() {
+        Answer answer = mock(Answer.class);
         Question question = mock(Question.class);
-        given(question.getId()).willReturn(QUESTION_ID);
-        given(question.getSession()).willReturn(session);
-        return question;
-    }
+        Session session = mock(Session.class);
 
-    // ===== 성공 =====
+        given(answer.getTranscript()).willReturn(VALID_TRANSCRIPT);
+        given(answer.getQuestion()).willReturn(question);
+        given(question.getSession()).willReturn(session);
+        given(question.getParent()).willReturn(null);
+        given(answer.getInputType()).willReturn(AnswerType.TEXT);
+        given(answer.getSttStatus()).willReturn("COMPLETED");
+
+        return answer;
+    }
 
     @Test
     @DisplayName("성공 - 텍스트 답변 저장")
     void success() {
-        User user = mockUser(USER_ID);
-        Session session = mockSession(user, SessionStatus.IN_PROGRESS);
-        Question question = mockQuestion(session);
-
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-        given(answerRepository.existsByQuestionId(QUESTION_ID)).willReturn(false);
-
-        // 🛠️ 수정됨: save()가 아닌 saveAndFlush()의 Mock 동작을 정의합니다.
-        given(answerRepository.saveAndFlush(any(Answer.class))).willAnswer(inv -> inv.getArgument(0));
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
+        Answer mockAnswer = mockAnswer();
+        AnswerResponse.NextAction mockNextAction = AnswerResponse.NextAction.of(NextActionType.FOLLOW_UP, 200L);
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request)).willReturn(mockAnswer);
+        given(answerCommandService.buildContext(any())).willReturn("context");
+        given(claudeClient.generateFollowUp(anyString())).willReturn("꼬리질문입니다");
+        given(answerCommandService.saveFollowUpQuestion(any(), any(), any(Integer.class), anyString()))
+                .willReturn(mockNextAction);
 
         AnswerResponse response = answerService.submitTextAnswer(SESSION_ID, USER_ID, request);
 
-        // 🛠️ 수정됨: 로직이 saveAndFlush()를 정상적으로 호출했는지 검증합니다.
-        verify(answerRepository).saveAndFlush(any(Answer.class));
+        verify(answerCommandService).saveTextAnswer(SESSION_ID, USER_ID, request);
         assertThat(response.answer().transcript()).contains("재고 차감");
+        assertThat(response.nextAction().type()).isEqualTo(NextActionType.FOLLOW_UP);
     }
-
-    // ===== 실패 1: 질문 없음 =====
 
     @Test
     @DisplayName("실패 - 질문이 없으면 QUESTION_NOT_FOUND")
     void fail_questionNotFound() {
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.empty());
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.QUESTION_NOT_FOUND));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
@@ -105,19 +93,14 @@ class AnswerServiceTest {
                 .isEqualTo(AnswerErrorCode.QUESTION_NOT_FOUND);
     }
 
-    // ===== 실패 2: 세션 불일치 =====
-
     @Test
     @DisplayName("실패 - URL 세션과 질문의 세션이 다르면 QUESTION_SESSION_MISMATCH")
     void fail_sessionMismatch() {
-        User user = mockUser(USER_ID);
-        Session session = mockSession(user, SessionStatus.IN_PROGRESS);
-        Question question = mockQuestion(session);
-
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
-        Long wrongSessionId = 999L;   // URL 세션이 질문의 세션(10)과 다름
+        Long wrongSessionId = 999L;
+
+        given(answerCommandService.saveTextAnswer(wrongSessionId, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.QUESTION_SESSION_MISMATCH));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(wrongSessionId, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
@@ -125,18 +108,13 @@ class AnswerServiceTest {
                 .isEqualTo(AnswerErrorCode.QUESTION_SESSION_MISMATCH);
     }
 
-    // ===== 실패 3: 남의 세션 =====
-
     @Test
     @DisplayName("실패 - 남의 세션이면 ANSWER_FORBIDDEN")
     void fail_forbidden() {
-        User otherUser = mockUser(2L);   // 다른 사람
-        Session session = mockSession(otherUser, SessionStatus.IN_PROGRESS);
-        Question question = mockQuestion(session);
-
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.ANSWER_FORBIDDEN));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
@@ -144,18 +122,13 @@ class AnswerServiceTest {
                 .isEqualTo(AnswerErrorCode.ANSWER_FORBIDDEN);
     }
 
-    // ===== 실패 4: 세션 상태 =====
-
     @Test
     @DisplayName("실패 - IN_PROGRESS가 아니면 SESSION_NOT_IN_PROGRESS")
     void fail_notInProgress() {
-        User user = mockUser(USER_ID);
-        Session session = mockSession(user, SessionStatus.READY);   // 아직 시작 안 함
-        Question question = mockQuestion(session);
-
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.SESSION_NOT_IN_PROGRESS));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
@@ -163,19 +136,13 @@ class AnswerServiceTest {
                 .isEqualTo(AnswerErrorCode.SESSION_NOT_IN_PROGRESS);
     }
 
-    // ===== 실패 5: 중복 답변 =====
-
     @Test
     @DisplayName("실패 - 이미 답변했으면 ALREADY_ANSWERED")
     void fail_alreadyAnswered() {
-        User user = mockUser(USER_ID);
-        Session session = mockSession(user, SessionStatus.IN_PROGRESS);
-        Question question = mockQuestion(session);
-
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-        given(answerRepository.existsByQuestionId(QUESTION_ID)).willReturn(true);   // 이미 답변
-
         AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, VALID_TRANSCRIPT);
+
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.ALREADY_ANSWERED));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)
@@ -183,19 +150,13 @@ class AnswerServiceTest {
                 .isEqualTo(AnswerErrorCode.ALREADY_ANSWERED);
     }
 
-    // ===== 실패 6: 답변 너무 짧음 =====
-
     @Test
     @DisplayName("실패 - 답변이 너무 짧으면 ANSWER_TOO_SHORT")
     void fail_tooShort() {
-        User user = mockUser(USER_ID);
-        Session session = mockSession(user, SessionStatus.IN_PROGRESS);
-        Question question = mockQuestion(session);
+        AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, "짧음");
 
-        given(questionRepository.findById(QUESTION_ID)).willReturn(Optional.of(question));
-        given(answerRepository.existsByQuestionId(QUESTION_ID)).willReturn(false);
-
-        AnswerCreateRequest request = new AnswerCreateRequest(QUESTION_ID, "짧음");   // 10자 미만
+        given(answerCommandService.saveTextAnswer(SESSION_ID, USER_ID, request))
+                .willThrow(new BusinessException(AnswerErrorCode.ANSWER_TOO_SHORT));
 
         assertThatThrownBy(() -> answerService.submitTextAnswer(SESSION_ID, USER_ID, request))
                 .isInstanceOf(BusinessException.class)

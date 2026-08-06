@@ -1,6 +1,7 @@
 package com.benly.question.dto;
 
 import com.benly.question.entity.Answer;
+import com.benly.question.entity.NextActionType;
 
 public record AnswerResponse(
         AnswerInfo answer,
