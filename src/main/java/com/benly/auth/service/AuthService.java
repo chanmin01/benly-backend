@@ -35,6 +35,9 @@ public class AuthService {
 
         UserResolution resolution = findOrRegister(kakaoUser, request.termsAgreed());
 
+        userRepository.findByIdForUpdate(resolution.user().getId())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED));
+
         TokenPair tokens = issueAndSaveTokens(resolution.user());
 
         return KakaoLoginResponse.of(tokens, resolution.user(), resolution.isNewUser());
