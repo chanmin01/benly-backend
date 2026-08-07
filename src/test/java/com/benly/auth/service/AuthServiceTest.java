@@ -52,11 +52,14 @@ public class AuthServiceTest {
     @DisplayName("신규 유저가 약관 동의하면 가입되고 토큰이 발급된다")
     void newUserLogin() {
         // given
+        User newUser = User.of("12345", "홍길동");
         given(kakaoOAuthClient.getKakaoUser("code"))
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.empty());
         given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
-                .willReturn(User.of("12345", "홍길동"));
+                .willReturn(newUser);
+        given(userRepository.findByIdForUpdate(any()))
+                .willReturn(Optional.of(newUser));   // 로그인 시 유저 행 잠금
         given(jwtProvider.createAccessToken(any())).willReturn("access-token");
         given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry())
@@ -95,14 +98,17 @@ public class AuthServiceTest {
     @DisplayName("동시 가입 충돌 시 기존 유저로 복구하고 isNewUser는 false다")
     void concurrentRegisterFallsBackToExisting() {
         // given
+        User existing = User.of("12345", "홍길동");
         given(kakaoOAuthClient.getKakaoUser("code"))
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         // 첫 조회: 없음(신규처럼 진입) → 저장 실패 후 재조회: 있음(기존 복구)
         given(userRepository.findByKakaoId("12345"))
                 .willReturn(Optional.empty())
-                .willReturn(Optional.of(User.of("12345", "홍길동")));
+                .willReturn(Optional.of(existing));
         given(userRegistrationService.register(any(KakaoUserInfo.class), anyBoolean()))
                 .willThrow(new DataIntegrityViolationException("duplicate kakao_id"));
+        given(userRepository.findByIdForUpdate(any()))
+                .willReturn(Optional.of(existing));   // 로그인 시 유저 행 잠금
         given(jwtProvider.createAccessToken(any())).willReturn("access-token");
         given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
@@ -125,6 +131,8 @@ public class AuthServiceTest {
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.findByKakaoId("12345"))
                 .willReturn(Optional.of(withdrawnUser));
+        given(userRepository.findByIdForUpdate(any()))
+                .willReturn(Optional.of(withdrawnUser));   // 로그인 시 유저 행 잠금
         given(jwtProvider.createAccessToken(any())).willReturn("access-token");
         given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry())
@@ -136,6 +144,28 @@ public class AuthServiceTest {
         // then
         assertThat(withdrawnUser.isDeleted()).isFalse();
         assertThat(response.isNewUser()).isFalse();
+    }
+
+    @Test
+    @DisplayName("로그인 시 유저 행을 잠근 뒤 기존 토큰을 정리하고 새로 발급한다")
+    void loginAcquiresLockAndReplacesToken() {
+        // given
+        User user = User.of("12345", "홍길동");
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
+        given(userRepository.findByKakaoId("12345")).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(any())).willReturn(Optional.of(user));
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
+        given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
+
+        // when
+        authService.kakaoLogin(new KakaoLoginRequest("code", true));
+
+        // then — 락 조회 + 기존 토큰 삭제 후 저장까지 호출됐는지
+        verify(userRepository).findByIdForUpdate(user.getId());
+        verify(refreshTokenRepository).deleteByUserId(user.getId());
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
