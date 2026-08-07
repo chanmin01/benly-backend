@@ -81,8 +81,6 @@ public class AuthService {
             throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
 
-        refreshTokenRepository.delete(saved);
-
         return issueAndSaveTokens(user);
     }
 
@@ -90,9 +88,10 @@ public class AuthService {
         String accessToken = jwtProvider.createAccessToken(user.getId());
         String refreshToken = jwtProvider.createRefreshToken(user.getId());
 
+        refreshTokenRepository.deleteByUserId(user.getId());
+
         refreshTokenRepository.save(
-                RefreshToken.of(user, refreshToken, jwtProvider.getRefreshTokenExpiry()
-                ));
+                RefreshToken.of(user, refreshToken, jwtProvider.getRefreshTokenExpiry()));
 
         return new TokenPair(accessToken, refreshToken);
     }
