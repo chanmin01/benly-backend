@@ -58,11 +58,11 @@ public class DocumentServiceTest {
     @DisplayName("PDF를 업로드하면 S3에 올리고 Document를 저장한다")
     void uploadSuccess() {
         // given
+        byte[] pdfBytes = "%PDF-1.4\n실제내용".getBytes();
         MultipartFile file = new MockMultipartFile(
-                "file", "지원서.pdf", MediaType.APPLICATION_PDF_VALUE, "pdf-content".getBytes());
+                "file", "지원서.pdf", MediaType.APPLICATION_PDF_VALUE, pdfBytes);
         given(s3StorageService.upload(file, 1L)).willReturn("documents/1/uuid.pdf");
         given(userRepository.getReferenceById(1L)).willReturn(userWithId(1L));
-        ;
         given(documentRepository.save(any(Document.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -92,6 +92,21 @@ public class DocumentServiceTest {
     }
 
     @Test
+    @DisplayName("Content-Type만 PDF로 위조한 파일(실제 PNG)은 422로 거부한다")
+    void uploadRejectsFakePdf() {
+        byte[] pngBytes = {(byte)0x89, 'P', 'N', 'G', 0x0D, 0x0A};
+        MultipartFile file = new MockMultipartFile(
+                "file", "fake.pdf", MediaType.APPLICATION_PDF_VALUE, pngBytes);
+
+        assertThatThrownBy(() -> documentService.upload(1L, file))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(DocumentErrorCode.INVALID_FILE_TYPE));
+
+        verify(s3StorageService, never()).upload(any(), any());
+    }
+
+    @Test
     @DisplayName("빈 파일이면 422로 거부한다")
     void uploadRejectsEmptyFile() {
         // given
@@ -105,6 +120,27 @@ public class DocumentServiceTest {
                         .isEqualTo(DocumentErrorCode.INVALID_FILE_TYPE));
 
         verify(s3StorageService, never()).upload(any(), any());
+    }
+
+    @Test
+    @DisplayName("DB 저장이 실패하면 S3에 올린 객체를 되돌리고(삭제) UPLOAD_FAILED를 던진다")
+    void uploadRollsBackS3WhenDbFails() {
+        // given
+        byte[] pdfBytes = "%PDF-1.4\n내용".getBytes();
+        MultipartFile file = new MockMultipartFile(
+                "file", "지원서.pdf", MediaType.APPLICATION_PDF_VALUE, pdfBytes);
+        given(s3StorageService.upload(file, 1L)).willReturn("documents/1/uuid.pdf");
+        given(userRepository.getReferenceById(1L)).willReturn(userWithId(1L));
+        given(documentRepository.save(any(Document.class)))
+                .willThrow(new RuntimeException("DB 저장 실패"));
+
+        // when & then
+        assertThatThrownBy(() -> documentService.upload(1L, file))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(DocumentErrorCode.UPLOAD_FAILED));
+
+        verify(s3StorageService).delete("documents/1/uuid.pdf");
     }
 
 

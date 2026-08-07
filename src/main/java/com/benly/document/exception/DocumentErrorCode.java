@@ -11,7 +11,8 @@ public enum DocumentErrorCode implements ErrorCode {
 
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "서류를 찾을 수 없습니다."),
     DOCUMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "해당 서류에 접근할 수 없습니다."),
-    INVALID_FILE_TYPE(HttpStatus.UNPROCESSABLE_CONTENT, "PDF 파일만 업로드할 수 있습니다.");
+    INVALID_FILE_TYPE(HttpStatus.UNPROCESSABLE_CONTENT, "PDF 파일만 업로드할 수 있습니다."),
+    UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "서류 업로드에 실패했습니다.");
 
     private final HttpStatus status;
     private final String message;
