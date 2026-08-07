@@ -69,7 +69,7 @@ public class Session extends BaseEntity {
     public void markAnalyzing() {
         this.status = SessionStatus.ANALYZING;
     }
-    ㅎ
+
     public void markCanceled() {
         this.status = SessionStatus.CANCELED;
     }

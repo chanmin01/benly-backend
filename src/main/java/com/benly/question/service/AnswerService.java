@@ -88,4 +88,38 @@ public class AnswerService {
             return answerCommandService.decideNextMainOrFinish(mainQuestion.getId(), session.getId());
         }
     }
+
+    private AnswerResponse.NextAction decideSkipNextAction(Question skippedQuestion, Session session) {
+        boolean isMain = (skippedQuestion.getParent() == null);
+
+        if (isMain) {
+            // 메인 스킵 → 꼬리 안 만들고 다음 메인 (ID로 호출)
+            return answerCommandService.decideNextMainOrFinish(
+                    skippedQuestion.getId(), session.getId());
+        }
+
+        // 꼬리 스킵
+        Question mainQuestion = skippedQuestion.getParent();
+        int followUpCount = answerCommandService.countFollowUps(mainQuestion);
+
+        if (followUpCount < MAX_FOLLOW_UP) {
+            // 꼬리1 스킵 → 새 꼬리 생성 (답변이랑 같은 로직)
+            return tryCreateFollowUp(mainQuestion, session, followUpCount + 1);
+        }
+
+        // 꼬리2 스킵 → 다음 메인
+        return answerCommandService.decideNextMainOrFinish(
+                mainQuestion.getId(), session.getId());
+    }
+
+    public AnswerResponse skipQuestion(Long sessionId, Long userId, Long questionId) {
+        // 1. 스킵 저장 (짧은 트랜잭션)
+        Answer savedSkip = answerCommandService.saveSkip(sessionId, userId, questionId);
+
+        // 2. 스킵 전용 nextAction (트랜잭션 밖)
+        AnswerResponse.NextAction nextAction = decideSkipNextAction(
+                savedSkip.getQuestion(), savedSkip.getQuestion().getSession());
+
+        return AnswerResponse.from(savedSkip, nextAction);
+    }
 }

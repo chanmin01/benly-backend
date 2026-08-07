@@ -26,6 +26,9 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
     @Query("SELECT q FROM Question q WHERE q.session.id = :sessionId AND q.parent IS NULL AND NOT EXISTS (SELECT a FROM Answer a WHERE a.question = q) ORDER BY q.seq ASC")
     List<Question> findUnansweredMains(@Param("sessionId") Long sessionId);
 
+    @Query("SELECT COUNT(q) FROM Question q WHERE q.session.id = :sessionId AND q.parent IS NULL AND NOT EXISTS (SELECT a FROM Answer a WHERE a.question = q)")
+    int countUnansweredMainsBySessionId(@Param("sessionId") Long sessionId);
+
     // 세션 전체의 메인 질문  (진행도 total)
     int countBySessionAndParentIsNull(Session session);
 }

@@ -1,6 +1,7 @@
 package com.benly.session.controller;
 
 import com.benly.global.common.ApiResponse;
+import com.benly.question.dto.CurrentQuestionResponse;
 import com.benly.question.service.QuestionGenerationService;
 import com.benly.session.dto.*;
 import com.benly.session.service.SessionService;
@@ -63,5 +64,21 @@ public class SessionController {
             @AuthenticationPrincipal Long userId) {
         AnalyzeResponse data = sessionService.analyze(userId, sessionId);
         return ApiResponse.success("채점을 요청했습니다.", data);
+    }
+
+    @GetMapping("/{sessionId}/current-question")
+    public ApiResponse<CurrentQuestionResponse> getCurrentQuestion(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        CurrentQuestionResponse data = sessionService.getCurrentQuestion(userId, sessionId);
+        return ApiResponse.success("현재 질문을 조회했습니다.", data);
+    }
+
+    @PostMapping("/{sessionId}/cancel")
+    public ApiResponse<SessionCancelResponse> cancelSession(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        SessionCancelResponse data = sessionService.cancelSession(userId, sessionId);
+        return ApiResponse.success("면접을 폐기했습니다.", data);
     }
 }
