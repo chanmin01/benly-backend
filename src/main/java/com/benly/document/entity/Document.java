@@ -24,6 +24,21 @@ public class Document extends BaseEntity {
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
 
-    @Column(name = "file_url", nullable = false, length = 500)
-    private String fileUrl;
+    @Column(name = "storage_key", nullable = false, length = 500)
+    private String storageKey;
+
+    private Document(User user, String fileName, String storageKey) {
+        this.user = user;
+        this.fileName = fileName;
+        this.storageKey = storageKey;
+    }
+
+    public static Document create(User user, String fileName, String storageKey) {
+        return new Document(user, fileName, storageKey);
+    }
+
+    public void rename(String newFileName) {
+        this.fileName = newFileName;
+    }
+
 }

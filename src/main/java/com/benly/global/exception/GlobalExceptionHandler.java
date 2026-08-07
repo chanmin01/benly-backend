@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -57,6 +58,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(
                         CommonErrorCode.NOT_FOUND.getStatus().value(),
                         CommonErrorCode.NOT_FOUND.getMessage(),
+                        request.getRequestURI()
+                ));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUpload(
+            MaxUploadSizeExceededException e, HttpServletRequest request) {
+
+        log.warn("MaxUploadSize: {}", request.getRequestURI());
+
+        return ResponseEntity
+                .status(CommonErrorCode.CONTENT_TOO_LARGE.getStatus())
+                .body(ApiResponse.error(
+                        CommonErrorCode.CONTENT_TOO_LARGE.getStatus().value(),
+                        CommonErrorCode.CONTENT_TOO_LARGE.getMessage(),
                         request.getRequestURI()
                 ));
     }
