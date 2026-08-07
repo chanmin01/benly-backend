@@ -2,9 +2,7 @@ package com.benly.session.controller;
 
 import com.benly.global.common.ApiResponse;
 import com.benly.question.service.QuestionGenerationService;
-import com.benly.session.dto.SessionCreateRequest;
-import com.benly.session.dto.SessionCreateResponse;
-import com.benly.session.dto.SessionStartResponse;
+import com.benly.session.dto.*;
 import com.benly.session.service.SessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,5 +38,30 @@ public class SessionController {
             @AuthenticationPrincipal Long userId) {
         SessionStartResponse data = sessionService.startSession(userId, sessionId);
         return ApiResponse.success("면접을 시작합니다.", data);
+    }
+
+
+    @GetMapping("/{sessionId}")
+    public ApiResponse<SessionDetailResponse> getSession(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        SessionDetailResponse data = sessionService.getSession(userId, sessionId);
+        return ApiResponse.success("세션을 조회했습니다.", data);
+    }
+
+    @GetMapping("/{sessionId}/generation-status")
+    public ApiResponse<GenerationStatusResponse> getGenerationStatus(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        GenerationStatusResponse data = sessionService.getGenerationStatus(userId, sessionId);
+        return ApiResponse.success("생성 상태를 조회했습니다.", data);
+    }
+
+    @PostMapping("/{sessionId}/analyze")
+    public ApiResponse<AnalyzeResponse> analyze(
+            @PathVariable Long sessionId,
+            @AuthenticationPrincipal Long userId) {
+        AnalyzeResponse data = sessionService.analyze(userId, sessionId);
+        return ApiResponse.success("채점을 요청했습니다.", data);
     }
 }
