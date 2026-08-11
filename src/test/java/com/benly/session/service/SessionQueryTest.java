@@ -27,6 +27,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
@@ -121,7 +123,7 @@ class SessionQueryTest {
     // ===== analyze =====
 
     @Test
-    @DisplayName("채점 요청 성공 - COMPLETED → ANALYZING")
+    @DisplayName("채점 요청 성공 - COMPLETED -> ANALYZING")
     void analyze_success() {
         User user = mockUser(USER_ID);
         Session session = createRealSession(user, SessionStatus.COMPLETED);
@@ -171,9 +173,9 @@ class SessionQueryTest {
         given(followUp.getContent()).willReturn("꼬리질문");
         given(followUp.getType()).willReturn("FOLLOW_UP");
 
-        // 미답변 꼬리 있음 → 그거 반환
-        given(questionRepository.findUnansweredFollowUps(SESSION_ID))
-                .willReturn(List.of(followUp));
+        // 수정됨: 새롭게 추가된 단건 조회 메서드 모킹
+        given(questionRepository.findFirstUnansweredFollowUpBySessionId(SESSION_ID))
+                .willReturn(Optional.of(followUp));
 
         CurrentQuestionResponse response = sessionService.getCurrentQuestion(USER_ID, SESSION_ID);
 
@@ -194,9 +196,11 @@ class SessionQueryTest {
         given(main.getContent()).willReturn("메인질문");
         given(main.getType()).willReturn("MAIN");
 
-        // 미답변 꼬리 없음, 미답변 메인 있음
-        given(questionRepository.findUnansweredFollowUps(SESSION_ID)).willReturn(List.of());
-        given(questionRepository.findUnansweredMains(SESSION_ID)).willReturn(List.of(main));
+        // 수정됨: 꼬리가 Optional.empty()를 반환하고 메인이 값을 반환하도록 모킹
+        given(questionRepository.findFirstUnansweredFollowUpBySessionId(SESSION_ID))
+                .willReturn(Optional.empty());
+        given(questionRepository.findFirstUnansweredMainBySessionId(SESSION_ID))
+                .willReturn(Optional.of(main));
 
         CurrentQuestionResponse response = sessionService.getCurrentQuestion(USER_ID, SESSION_ID);
 
@@ -207,11 +211,15 @@ class SessionQueryTest {
     // ===== 세션 폐기 =====
 
     @Test
-    @DisplayName("세션 폐기 성공 - IN_PROGRESS → CANCELED")
+    @DisplayName("세션 폐기 성공 - IN_PROGRESS -> CANCELED")
     void cancelSession_success() {
         User user = mockUser(USER_ID);
         Session session = createRealSession(user, SessionStatus.IN_PROGRESS);
         given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+
+        // 수정됨: updateStatusIfIn 메서드가 성공(1)을 반환하도록 모킹
+        given(sessionRepository.updateStatusIfIn(eq(SESSION_ID), anyList(), eq(SessionStatus.CANCELED)))
+                .willReturn(1);
 
         sessionService.cancelSession(USER_ID, SESSION_ID);
 
@@ -225,6 +233,10 @@ class SessionQueryTest {
         User user = mockUser(USER_ID);
         Session session = createRealSession(user, SessionStatus.COMPLETED);  // 완료된 건 폐기 불가
         given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+
+        // 수정됨: 조건에 맞지 않아 업데이트가 실패(0)하도록 모킹
+        given(sessionRepository.updateStatusIfIn(eq(SESSION_ID), anyList(), eq(SessionStatus.CANCELED)))
+                .willReturn(0);
 
         assertThatThrownBy(() -> sessionService.cancelSession(USER_ID, SESSION_ID))
                 .isInstanceOf(BusinessException.class)
