@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 
 @Service
 @RequiredArgsConstructor
@@ -159,14 +161,15 @@ public class SessionService {
             throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
         }
 
-        // 미답변 꼬리 우선, 없으면 미답변 메인 (verifyCurrentQuestionSequence랑 같은 우선순위)
-        Question current = questionRepository.findUnansweredFollowUps(sessionId).stream()
-                .findFirst()
-                .orElseGet(() -> questionRepository.findUnansweredMains(sessionId).stream()
-                        .findFirst()
-                        .orElseThrow(() -> new BusinessException(SessionErrorCode.QUESTION_NOT_FOUND)));
+        Question current = getNextQuestion(sessionId);
 
         return CurrentQuestionResponse.from(current);
+    }
+
+    private Question getNextQuestion(Long sessionId) {
+        return questionRepository.findFirstUnansweredFollowUpBySessionId(sessionId)
+                .orElseGet(() -> questionRepository.findFirstUnansweredMainBySessionId(sessionId)
+                        .orElseThrow(() -> new BusinessException(SessionErrorCode.QUESTION_NOT_FOUND)));
     }
 
     @Transactional
@@ -178,13 +181,18 @@ public class SessionService {
             throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
         }
 
-        // IN_PROGRESS or READY만 폐기 가능 (원자적 전환)
-        SessionStatus status = session.getStatus();
-        if (status != SessionStatus.IN_PROGRESS && status != SessionStatus.READY) {
+        int updated = sessionRepository.updateStatusIfIn(
+                sessionId,
+                List.of(SessionStatus.READY, SessionStatus.IN_PROGRESS),
+                SessionStatus.CANCELED
+        );
+
+        if (updated == 0) {
+            // 조건(READY나 IN_PROGRESS)에 맞지 않아 업데이트된 행이 0개인 경우
             throw new BusinessException(SessionErrorCode.SESSION_CANNOT_CANCEL);
         }
 
-        session.markCanceled();
+        session.markCanceled(); // 영속성 컨텍스트 상태 동기화
 
         return SessionCancelResponse.from(session);
     }
