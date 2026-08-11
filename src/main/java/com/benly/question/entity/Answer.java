@@ -51,5 +51,9 @@ public class Answer extends BaseTimeEntity {
     public static Answer createAudio(Question question, String transcript, Integer durationSec) {
         return new Answer(question, transcript, AnswerType.AUDIO, durationSec, "COMPLETED");
     }
+
+    public static Answer createSkip(Question question){
+        return new Answer(question, null, AnswerType.SKIP, null, null);
+    }
 }
 

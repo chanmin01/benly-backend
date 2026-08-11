@@ -4,6 +4,7 @@ import com.benly.document.entity.Document;
 import com.benly.document.exception.DocumentErrorCode;
 import com.benly.document.repository.DocumentRepository;
 import com.benly.global.exception.BusinessException;
+import com.benly.question.dto.CurrentQuestionResponse;
 import com.benly.question.entity.Question;
 import com.benly.question.repository.QuestionRepository;
 import com.benly.question.service.QuestionGenerationService;
@@ -17,6 +18,8 @@ import com.benly.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 
 @Service
@@ -107,7 +110,7 @@ public class SessionService {
 
         // 진행도 계산 (메인 기준)
         int total = questionRepository.countBySessionAndParentIsNull(session);
-        int unanswered = questionRepository.findUnansweredMains(sessionId).size();
+        int unanswered = questionRepository.countUnansweredMainsBySessionId(sessionId); // COUNT 쿼리 메서드 호출
         int current = total - unanswered;   // 답변한 메인 수
 
         return SessionDetailResponse.from(session, current, total);
@@ -137,7 +140,10 @@ public class SessionService {
         }
 
         // COMPLETED만 채점 요청 가능
-        if (session.getStatus() != SessionStatus.COMPLETED) {
+        int updated = sessionRepository.updateStatusIfCurrent(
+                sessionId, SessionStatus.COMPLETED, SessionStatus.ANALYZING);
+
+        if (updated == 0) {
             throw new BusinessException(SessionErrorCode.SESSION_NOT_COMPLETED);
         }
 
@@ -146,5 +152,48 @@ public class SessionService {
         return AnalyzeResponse.from(session);
     }
 
+    @Transactional(readOnly = true)
+    public CurrentQuestionResponse getCurrentQuestion(Long userId, Long sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_FOUND));
 
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
+        }
+
+        Question current = getNextQuestion(sessionId);
+
+        return CurrentQuestionResponse.from(current);
+    }
+
+    private Question getNextQuestion(Long sessionId) {
+        return questionRepository.findFirstUnansweredFollowUpBySessionId(sessionId)
+                .orElseGet(() -> questionRepository.findFirstUnansweredMainBySessionId(sessionId)
+                        .orElseThrow(() -> new BusinessException(SessionErrorCode.QUESTION_NOT_FOUND)));
+    }
+
+    @Transactional
+    public SessionCancelResponse cancelSession(Long userId, Long sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(SessionErrorCode.SESSION_NOT_FOUND));
+
+        if (!session.getUser().getId().equals(userId)) {
+            throw new BusinessException(SessionErrorCode.SESSION_FORBIDDEN);
+        }
+
+        int updated = sessionRepository.updateStatusIfIn(
+                sessionId,
+                List.of(SessionStatus.READY, SessionStatus.IN_PROGRESS),
+                SessionStatus.CANCELED
+        );
+
+        if (updated == 0) {
+            // 조건(READY나 IN_PROGRESS)에 맞지 않아 업데이트된 행이 0개인 경우
+            throw new BusinessException(SessionErrorCode.SESSION_CANNOT_CANCEL);
+        }
+
+        session.markCanceled(); // 영속성 컨텍스트 상태 동기화
+
+        return SessionCancelResponse.from(session);
+    }
 }
