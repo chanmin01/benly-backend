@@ -69,4 +69,8 @@ public class Session extends BaseEntity {
     public void markAnalyzing() {
         this.status = SessionStatus.ANALYZING;
     }
+
+    public void markCanceled() {
+        this.status = SessionStatus.CANCELED;
+    }
 }

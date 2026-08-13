@@ -186,4 +186,18 @@ public class AnswerCommandService {
             throw new BusinessException(AnswerErrorCode.INVALID_SEQUENCE);
         }
     }
+
+    @Transactional
+    public Answer saveSkip(Long sessionId, Long userId, Long questionId) {
+        // 기존 공통 검증 재사용 (질문/세션일치/소유권/상태/중복/순서)
+        Question question = validateAndGetQuestion(questionId, sessionId, userId);
+
+        // 스킵 저장 (길이 검증 없음 - 답변이 아니니까)
+        Answer skip = Answer.createSkip(question);
+        try {
+            return answerRepository.saveAndFlush(skip);
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(AnswerErrorCode.ALREADY_ANSWERED);
+        }
+    }
 }
