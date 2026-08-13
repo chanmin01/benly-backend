@@ -24,4 +24,14 @@ public class ScoreAxis {
 
     @Column(name = "score", nullable = false)
     private Integer score;
+
+    private ScoreAxis(Feedback feedback, String axis, Integer score) {
+        this.feedback = feedback;
+        this.axis = axis;
+        this.score = score;
+    }
+
+    public static ScoreAxis create(Feedback feedback, String axis, Integer score) {
+        return new ScoreAxis(feedback, axis, score);
+    }
 }

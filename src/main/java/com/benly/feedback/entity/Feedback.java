@@ -26,4 +26,14 @@ public class Feedback extends BaseEntity {
 
     @Column(name = "topic_score")
     private Integer topicScore;
+
+    private Feedback(Question question, String content, Integer topicScore) {
+        this.question = question;
+        this.content = content;
+        this.topicScore = topicScore;
+    }
+
+    public static Feedback create(Question question, String content, Integer topicScore) {
+        return new Feedback(question, content, topicScore);
+    }
 }
