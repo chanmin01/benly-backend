@@ -43,5 +43,13 @@ public class S3StorageService {
         s3Template.deleteObject(bucket, key);
     }
 
+    public byte[] download(String key) {
+        try {
+            return s3Template.download(bucket, key).getInputStream().readAllBytes();
+        } catch (IOException e) {
+            throw new RuntimeException("S3 다운로드 실패", e);
+        }
+    }
+
 
 }

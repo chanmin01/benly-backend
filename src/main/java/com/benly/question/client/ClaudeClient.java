@@ -36,10 +36,10 @@ public class ClaudeClient {
     }
 
 
-    public List<String> generateQuestions(String companyType, String stage, String jobRole, String jd){
+    public List<String> generateQuestions(String companyType, String stage, String jobRole, String jd, String docText){
 
         // 1. 프롬프트 만들기
-        String prompt = buildPrompt(companyType, stage, jobRole, jd);
+        String prompt = buildPrompt(companyType, stage, jobRole, jd, docText);
 
         // 2. Tool Use 스키마 설정 및 요청 바디 구성
         Map<String, Object> requestBody = Map.of(
@@ -85,19 +85,27 @@ public class ClaudeClient {
 
     // TODO: 서류까지 연동은 추후에
 
-    private String buildPrompt(String companyType, String stage, String jobRole, String jd){
+    private String buildPrompt(String companyType, String stage, String jobRole,
+                               String jd, String docText) {
         return """
-                당신은 면접관입니다. 제공된 도구(Tool)를 사용하여 아래 조건에 맞는 면접 질문 5개를 생성하세요.
+            당신은 면접관입니다. 제공된 도구(Tool)를 사용하여 아래 조건에 맞는 면접 질문 5개를 생성하세요.
 
-                - 기업 유형: %s
-                - 면접 단계: %s
-                - 직무: %s
-                - 채용공고: %s
-                """.formatted(
+            - 기업 유형: %s
+            - 면접 단계: %s
+            - 직무: %s
+            - 채용공고: %s
+
+            [지원자 서류]
+            %s
+
+            지원자 서류가 제공된 경우, 서류 내용(경험, 프로젝트, 기술스택)을 바탕으로 
+            맞춤형 질문을 우선 생성하세요.
+            """.formatted(
                 companyType,
                 stage,
                 jobRole != null ? jobRole : "미지정",
-                jd != null ? jd : "없음"
+                jd != null ? jd : "없음",
+                docText != null ? docText : "제출된 서류 없음"
         );
     }
 

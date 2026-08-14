@@ -1,8 +1,11 @@
 package com.benly.question.service;
 
+import com.benly.document.entity.Document;
+import com.benly.document.repository.DocumentRepository;
+import com.benly.document.storage.PdfTextExtractor;
+import com.benly.document.storage.S3StorageService;
 import com.benly.question.client.ClaudeClient;
 import com.benly.question.entity.Question;
-import com.benly.question.entity.SeedQuestion;
 import com.benly.question.repository.QuestionRepository;
 import com.benly.question.repository.SeedQuestionRepository;
 import com.benly.session.entity.Session;
@@ -10,6 +13,7 @@ import com.benly.session.repository.SessionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -17,10 +21,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,66 +38,125 @@ class QuestionGenerationServiceTest {
     @Mock private SeedQuestionRepository seedQuestionRepository;
     @Mock private QuestionRepository questionRepository;
     @Mock private SessionRepository sessionRepository;
+    @Mock private DocumentRepository documentRepository;
+    @Mock private S3StorageService s3StorageService;
+    @Mock private PdfTextExtractor pdfTextExtractor;
 
     @InjectMocks
     private QuestionGenerationService questionGenerationService;
 
-    @Test
-    @DisplayName("Claude 성공 - Claude가 만든 질문 5개가 저장된다")
-    void generate_claudeSuccess() {
-        // given
-        Long sessionId = 1L;
+    private static final Long SESSION_ID = 1L;
+    private static final Long DOC_ID = 10L;
+
+    private Session mockSession() {
         Session session = mock(Session.class);
         given(session.getCompanyType()).willReturn("SERVICE");
         given(session.getStage()).willReturn("TECHNICAL");
         given(session.getJobTitle()).willReturn("백엔드");
+        return session;
+    }
 
-        given(sessionRepository.findById(sessionId)).willReturn(Optional.of(session));
-        given(claudeClient.generateQuestions(any(), any(), any(), any()))
+    @Test
+    @DisplayName("docId 있으면 서류 텍스트를 추출해 Claude에 전달")
+    void generate_withDocument_passesDocText() {
+        Session session = mockSession();
+        given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+
+        // 서류 조회 → S3 다운로드 → 텍스트 추출
+        Document document = mock(Document.class);
+        given(document.getStorageKey()).willReturn("documents/1/abc.pdf");
+        given(documentRepository.findByIdAndDeletedAtIsNull(DOC_ID))
+                .willReturn(Optional.of(document));
+        given(s3StorageService.download("documents/1/abc.pdf"))
+                .willReturn("pdf bytes".getBytes());
+        given(pdfTextExtractor.extract(any())).willReturn("자소서 내용: Spring 경험");
+
+        given(claudeClient.generateQuestions(anyString(), anyString(), anyString(),
+                any(), anyString()))
                 .willReturn(List.of("질문1", "질문2", "질문3", "질문4", "질문5"));
 
         // when
-        questionGenerationService.generate(sessionId, "JD내용");
+        questionGenerationService.generate(SESSION_ID, "채용공고", DOC_ID);
 
-        // then
-        verify(questionRepository, times(5)).save(any(Question.class));
+        // then - Claude에 docText가 전달됐는지 캡처해서 확인
+        ArgumentCaptor<String> docTextCaptor = ArgumentCaptor.forClass(String.class);
+        verify(claudeClient).generateQuestions(anyString(), anyString(), anyString(),
+                any(), docTextCaptor.capture());
+        assertThat(docTextCaptor.getValue()).contains("자소서 내용");
+
         verify(session).markReady();
     }
 
     @Test
-    @DisplayName("Claude 실패 - 시드로 폴백되어 저장된다")
-    void generate_claudeFail_fallbackToSeed() {
-        // given
-        Long sessionId = 1L;
-        Session session = mock(Session.class);
-        given(session.getCompanyType()).willReturn("SERVICE");
-        given(session.getStage()).willReturn("TECHNICAL");
-        given(session.getJobTitle()).willReturn("백엔드");
+    @DisplayName("docId 없으면 서류 조회 없이 질문 생성 (docText=null)")
+    void generate_withoutDocument_docTextNull() {
+        Session session = mockSession();
+        given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(claudeClient.generateQuestions(anyString(), anyString(), anyString(),
+                any(), isNull()))
+                .willReturn(List.of("질문1", "질문2", "질문3", "질문4", "질문5"));
 
-        given(sessionRepository.findById(sessionId)).willReturn(Optional.of(session));
-        given(claudeClient.generateQuestions(any(), any(), any(), any()))
-                .willThrow(new RuntimeException("Claude 다운"));
+        // when - docId = null
+        questionGenerationService.generate(SESSION_ID, "채용공고", null);
 
-        // seed들을 given 밖에서 먼저 만든다 (중첩 stubbing 방지)
-        SeedQuestion seed1 = mockSeed("시드질문1");
-        SeedQuestion seed2 = mockSeed("시드질문2");
-        SeedQuestion seed3 = mockSeed("시드질문3");
-
-        given(seedQuestionRepository.findTop5ByCompanyTypeAndStage(any(), any()))
-                .willReturn(List.of(seed1, seed2, seed3));
-
-        // when
-        questionGenerationService.generate(sessionId, "JD내용");
-
-        // then
-        verify(questionRepository, times(3)).save(any(Question.class));
+        // then - 서류 관련 호출 없음
+        verify(documentRepository, never()).findByIdAndDeletedAtIsNull(any());
+        verify(s3StorageService, never()).download(anyString());
+        verify(claudeClient).generateQuestions(anyString(), anyString(), anyString(),
+                any(), isNull());
         verify(session).markReady();
     }
 
-    // SeedQuestion은 생성 메서드가 없어서 Mock으로 만듦
-    private SeedQuestion mockSeed(String content) {
-        SeedQuestion seed = mock(SeedQuestion.class);
-        given(seed.getContent()).willReturn(content);
-        return seed;
+    @Test
+    @DisplayName("서류 추출 실패해도 질문 생성은 계속 (docText=null)")
+    void generate_documentExtractFails_stillGenerates() {
+        Session session = mockSession();
+        given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+
+        // 서류 조회는 되는데 S3 다운로드 실패
+        Document document = mock(Document.class);
+        given(document.getStorageKey()).willReturn("documents/1/abc.pdf");
+        given(documentRepository.findByIdAndDeletedAtIsNull(DOC_ID))
+                .willReturn(Optional.of(document));
+        given(s3StorageService.download(anyString()))
+                .willThrow(new RuntimeException("S3 다운로드 실패"));
+
+        given(claudeClient.generateQuestions(anyString(), anyString(), anyString(),
+                any(), isNull()))
+                .willReturn(List.of("질문1", "질문2", "질문3", "질문4", "질문5"));
+
+        // when - 서류 실패해도
+        questionGenerationService.generate(SESSION_ID, "채용공고", DOC_ID);
+
+        // then - docText=null로 질문 생성 계속, READY
+        verify(claudeClient).generateQuestions(anyString(), anyString(), anyString(),
+                any(), isNull());
+        verify(session).markReady();
+    }
+
+    @Test
+    @DisplayName("Claude 실패 시 SeedQuestion 폴백")
+    void generate_claudeFails_fallbackToSeed() {
+        Session session = mockSession();
+        given(sessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+
+        // 서류 없음
+        // Claude 실패
+        given(claudeClient.generateQuestions(anyString(), anyString(), anyString(),
+                any(), any()))
+                .willThrow(new RuntimeException("Claude 오류"));
+
+        // Seed 폴백
+        var seed = mock(com.benly.question.entity.SeedQuestion.class);
+        given(seed.getContent()).willReturn("시드 질문");
+        given(seedQuestionRepository.findTop5ByCompanyTypeAndStage("SERVICE", "TECHNICAL"))
+                .willReturn(List.of(seed, seed, seed, seed, seed));
+
+        // when
+        questionGenerationService.generate(SESSION_ID, "채용공고", null);
+
+        // then - Seed로 질문 저장, READY
+        verify(questionRepository, org.mockito.Mockito.times(5)).save(any(Question.class));
+        verify(session).markReady();
     }
 }
