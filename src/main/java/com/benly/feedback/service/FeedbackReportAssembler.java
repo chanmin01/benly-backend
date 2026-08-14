@@ -88,19 +88,17 @@ public class FeedbackReportAssembler {
             Map<Long, Answer> answerByQuestion,
             FeedbackContent content) {
 
-        List<Question> tailQuestions = tailsByParent.getOrDefault(mainId, List.of());
+        List<Question> tailQuestions = new ArrayList<>(tailsByParent.getOrDefault(mainId, List.of()));
         tailQuestions.sort(Comparator.comparing(Question::getSeq));
 
-        Map<String, FeedbackContent.TailContent> feedbackByStrategy = new HashMap<>();
-        if (content != null && content.tails() != null) {
-            for (FeedbackContent.TailContent tc : content.tails()) {
-                feedbackByStrategy.put(tc.strategy(), tc);
-            }
-        }
+        List<FeedbackContent.TailContent> tailContents =
+                (content != null && content.tails() != null) ? content.tails() : List.of();
 
         List<Tail> tails = new ArrayList<>();
-        for (Question tq : tailQuestions) {
-            FeedbackContent.TailContent tc = feedbackByStrategy.get(tq.getStrategy());
+        for (int i = 0; i < tailQuestions.size(); i++) {
+            Question tq = tailQuestions.get(i);
+            FeedbackContent.TailContent tc = (i < tailContents.size()) ? tailContents.get(i) : null;
+
             tails.add(new Tail(
                     tq.getStrategy(),
                     tq.getContent(),

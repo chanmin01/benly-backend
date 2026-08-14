@@ -1,6 +1,7 @@
 package com.benly.feedback.client;
 
 import com.benly.feedback.dto.FeedbackContent;
+import com.benly.feedback.dto.ScoringContext;
 import com.benly.feedback.dto.ScoringResult.MainQuestionInput;
 import com.benly.feedback.dto.ScoringResult.MainQuestionScore;
 import com.benly.feedback.dto.ScoringResult.SessionSummary;
@@ -43,7 +44,7 @@ public class FeedbackScoringClient {
     ) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(60000);
+        factory.setReadTimeout(180000);
 
         this.restClient = RestClient.builder().requestFactory(factory).build();
         this.apiKey = apiKey;
@@ -107,7 +108,7 @@ public class FeedbackScoringClient {
         );
 
         JsonNode toolInput = callTool(prompt, "score_answer",
-                "면접 답변을 채점하여 축별 점수와 피드백을 반환합니다.", inputSchema, 3000);
+                "면접 답변을 채점하여 축별 점수와 피드백을 반환합니다.", inputSchema, 4000);
 
         return parseMainScore(axes, toolInput);
     }
@@ -137,11 +138,6 @@ public class FeedbackScoringClient {
                 text(toolInput, "keyCoachingWeakness"),
                 text(toolInput, "keyCoachingAction")
         );
-    }
-
-    // ===== 내부 =====
-
-    public record ScoringContext(String companyType, String stage, String jobTitle) {
     }
 
     private JsonNode callTool(String prompt, String toolName, String toolDesc,
@@ -233,6 +229,9 @@ public class FeedbackScoringClient {
                 - 일부 답변은 비어 있을 수 있습니다(지원자가 건너뜀). 건너뜀 자체는 감점하지 말고,
                   실제로 제출된 답변의 품질만 평가하세요. 건너뛰기에 대한 감점은 시스템이 별도로 처리합니다.
                 - 피드백은 지원자가 바로 실천할 수 있도록 구체적으로 작성합니다.
+                - 각 피드백(good/weak/next)은 2~3문장 이내로 간결하게 작성합니다.
+                - 모범답안(improvedAfter)은 4~5문장 이내로 핵심만 작성합니다.
+                - 꼬리질문(tails)의 각 항목도 반드시 채웁니다.
                 
                 [평가축]
                 %s

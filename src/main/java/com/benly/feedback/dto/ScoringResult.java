@@ -1,50 +1,86 @@
 package com.benly.feedback.dto;
 
+import com.benly.feedback.entity.Axis;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * LLM 채점 결과를 담는 내부 DTO. (외부 응답 DTO 아님)
- */
 public class ScoringResult {
 
-    /**
-     * 메인 질문 1개에 대한 채점 결과.
-     * - axisScores: 축코드 -> 0~100 원점수 (AxisSet 6축)
-     * - content: 카드에 저장될 피드백 (good/weak/next/개선답안/꼬리)
-     * - shortTitle: 카드 제목용 요약
-     */
     public record MainQuestionScore(
             String shortTitle,
             Map<String, Integer> axisScores,
             FeedbackContent content
-    ) {}
+    ) {
+        public MainQuestionScore scaledBy(double factor) {
+            Map<String, Integer> scaled = new HashMap<>();
+            axisScores.forEach((code, v) -> scaled.put(code, (int) Math.round(v * factor)));
+            return new MainQuestionScore(shortTitle, scaled, content);
+        }
 
-    /**
-     * 세션 전체 종합 코멘트.
-     * - summary: 총평(verdict)
-     * - keyCoachingWeakness: 가장 핵심적인 약점 1가지
-     * - keyCoachingAction: 그 약점에 대한 구체적 개선 행동
-     */
+        public static MainQuestionScore skipped(List<Axis> axes, String questionText) {
+            Map<String, Integer> zeros = new HashMap<>();
+            axes.forEach(a -> zeros.put(a.code(), 0));
+
+            FeedbackContent content = new FeedbackContent(
+                    null,
+                    "답변을 건너뛰어 평가할 수 없습니다.",
+                    "다음에는 짧게라도 답변을 시도해 보세요.",
+                    null, null, List.of());
+
+            String title = (questionText == null) ? "건너뛴 질문"
+                    : questionText.substring(0, Math.min(20, questionText.length()));
+            return new MainQuestionScore(title, zeros, content);
+        }
+    }
+
     public record SessionSummary(
             String summary,
             String keyCoachingWeakness,
             String keyCoachingAction
-    ) {}
+    ) {
+    }
 
-    /**
-     * 채점 입력용: 메인 질문 + 답변 + 그에 딸린 꼬리질문들.
-     */
     public record MainQuestionInput(
             Integer seq,
             String question,
             String answer,
             List<TailInput> tails
-    ) {}
+    ) {
+        public int totalCount() {
+            return 1 + tails.size();
+        }
+
+        public int answeredCount() {
+            int n = hasText(answer) ? 1 : 0;
+            for (TailInput t : tails) {
+                if (hasText(t.answer())) n++;
+            }
+            return n;
+        }
+
+        public int skippedCount() {
+            return totalCount() - answeredCount();
+        }
+
+        public boolean isFullySkipped() {
+            return answeredCount() == 0;
+        }
+
+        public double completeness() {
+            return (double) answeredCount() / totalCount();
+        }
+
+        private static boolean hasText(String s) {
+            return s != null && !s.isBlank();
+        }
+    }
 
     public record TailInput(
             String strategy,
             String question,
             String answer
-    ) {}
+    ) {
+    }
 }

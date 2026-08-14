@@ -1,25 +1,20 @@
 package com.benly.feedback.service;
 
 import com.benly.feedback.client.FeedbackScoringClient;
-import com.benly.feedback.client.FeedbackScoringClient.ScoringContext;
-import com.benly.feedback.dto.FeedbackContent;
+import com.benly.feedback.dto.ScoredTopic;
+import com.benly.feedback.dto.ScoringPlan;
 import com.benly.feedback.dto.ScoringResult.MainQuestionInput;
 import com.benly.feedback.dto.ScoringResult.MainQuestionScore;
 import com.benly.feedback.dto.ScoringResult.SessionSummary;
-import com.benly.feedback.dto.ScoringResult.TailInput;
-import com.benly.feedback.entity.*;
-import com.benly.feedback.repository.*;
-import com.benly.question.entity.Answer;
-import com.benly.question.entity.Question;
-import com.benly.session.entity.Session;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
@@ -27,165 +22,62 @@ import java.util.stream.Collectors;
 public class FeedbackCommandService {
 
     private final FeedbackScoringClient scoringClient;
-    private final FeedbackContentParser contentParser;
-    private final SessionReadRepository sessionReadRepository;
-    private final SessionFeedbackRepository sessionFeedbackRepository;
-    private final FeedbackRepository feedbackRepository;
-    private final ScoreAxisRepository scoreAxisRepository;
-    private final QuestionReadRepository questionReadRepository;
-    private final AnswerReadRepository answerReadRepository;
+    private final FeedbackScoringTx scoringTx;   // DB는 이쪽에 위임
 
     @Async
-    @Transactional
     public void score(Long sessionId) {
-        SessionFeedback sf = prepareSessionFeedback(sessionId);
         try {
-            Session session = sf.getSession();
-            AxisSet axisSet = AxisSet.resolve(session.getStage(), session.getCompanyType());
-            List<Axis> axes = axisSet.axes();
-            ScoringContext ctx = new ScoringContext(
-                    session.getCompanyType(), session.getStage(), session.getJobTitle());
+            ScoringPlan plan = scoringTx.loadPlan(sessionId);       // 1) 읽기(짧은 tx)
+            List<ScoredTopic> topics = scoreTopicsInParallel(plan); // 2) 병렬 채점(tx 밖)
 
-            List<Question> allQuestions = questionReadRepository.findBySession_IdOrderBySeqAsc(sessionId);
-            Map<Long, String> transcriptByQuestion = new HashMap<>();
-            for (Answer a : answerReadRepository.findBySessionId(sessionId)) {
-                if (a.getQuestion() != null) {
-                    transcriptByQuestion.put(a.getQuestion().getId(), a.getTranscript());
-                }
-            }
+            int totalScore = averageTopicScore(topics);
+            int totalSkipped = topics.stream().mapToInt(ScoredTopic::skippedCount).sum();
 
-            Map<Long, List<Question>> tailsByParent = allQuestions.stream()
-                    .filter(q -> q.getParent() != null)
-                    .collect(Collectors.groupingBy(q -> q.getParent().getId()));
+            SessionSummary summary = scoringClient.summarize(
+                    plan.ctx(), totalScore,
+                    topics.stream().map(ScoredTopic::score).toList(), totalSkipped); // 3) 종합 1회
 
-            List<Question> mains = allQuestions.stream()
-                    .filter(Question::isMain)
-                    .sorted(Comparator.comparing(Question::getSeq))
-                    .toList();
-
-            List<MainQuestionScore> results = new ArrayList<>();
-            List<Integer> topicScores = new ArrayList<>();
-            int totalSkipped = 0;
-
-            for (Question main : mains) {
-                MainQuestionInput input = buildInput(main, tailsByParent, transcriptByQuestion);
-
-                int totalQuestions = 1 + input.tails().size();
-                int answered = (isAnswered(input.answer()) ? 1 : 0)
-                        + (int) input.tails().stream().filter(t -> isAnswered(t.answer())).count();
-                totalSkipped += (totalQuestions - answered);
-                double completeness = (double) answered / totalQuestions;
-
-                MainQuestionScore score;
-                Map<String, Integer> scaledAxes;
-
-                if (answered == 0) {
-                    score = skippedScore(axes, main);
-                    scaledAxes = score.axisScores();
-                } else {
-                    MainQuestionScore raw = scoringClient.scoreMainQuestion(axes, ctx, input);
-                    scaledAxes = scaleAxes(raw.axisScores(), completeness);
-                    score = new MainQuestionScore(raw.shortTitle(), scaledAxes, raw.content());
-                }
-
-                int topicScore = axisSet.weightedScore(scaledAxes);
-                saveQuestionScore(main, score, topicScore);
-
-                results.add(score);
-                topicScores.add(topicScore);
-            }
-
-            int totalScore = topicScores.isEmpty() ? 0
-                    : Math.round((float) topicScores.stream().mapToInt(Integer::intValue).sum() / topicScores.size());
-
-            SessionSummary summary = scoringClient.summarize(ctx, totalScore, results, totalSkipped);
-
-            sf.complete(totalScore, summary.summary(),
-                    summary.keyCoachingWeakness(), summary.keyCoachingAction());
-
+            scoringTx.saveResults(sessionId, totalScore, topics, summary);           // 4) 저장(짧은 tx)
             log.info("채점 완료 sessionId={}, totalScore={}", sessionId, totalScore);
 
         } catch (Exception e) {
             log.error("채점 실패 sessionId={}", sessionId, e);
-            sf.fail();
+            scoringTx.markFailed(sessionId);
         }
     }
 
-    private SessionFeedback prepareSessionFeedback(Long sessionId) {
-        return sessionFeedbackRepository.findBySession_Id(sessionId)
-                .map(existing -> {
-                    scoreAxisRepository.deleteBySessionId(sessionId);
-                    feedbackRepository.deleteBySessionId(sessionId);
-                    existing.resetForRescore();
-                    return existing;
-                })
-                .orElseGet(() -> {
-                    Session session = sessionReadRepository.findById(sessionId)
-                            .orElseThrow(() -> new IllegalArgumentException("세션 없음: " + sessionId));
-                    return sessionFeedbackRepository.save(SessionFeedback.startScoring(session));
-                });
-    }
-
-    private MainQuestionInput buildInput(Question main,
-                                         Map<Long, List<Question>> tailsByParent,
-                                         Map<Long, String> transcriptByQuestion) {
-        List<Question> tailQs = new ArrayList<>(tailsByParent.getOrDefault(main.getId(), List.of()));
-        tailQs.sort(Comparator.comparing(Question::getSeq));
-
-        List<TailInput> tails = tailQs.stream()
-                .map(tq -> new TailInput(
-                        tq.getStrategy(),
-                        tq.getContent(),
-                        transcriptByQuestion.get(tq.getId())))
-                .toList();
-
-        return new MainQuestionInput(
-                main.getSeq(),
-                main.getContent(),
-                transcriptByQuestion.get(main.getId()),
-                tails);
-    }
-
-    private boolean isAnswered(String transcript) {
-        return transcript != null && !transcript.isBlank();
-    }
-
-    private Map<String, Integer> scaleAxes(Map<String, Integer> axisScores, double completeness) {
-        Map<String, Integer> scaled = new HashMap<>();
-        for (Map.Entry<String, Integer> e : axisScores.entrySet()) {
-            scaled.put(e.getKey(), (int) Math.round(e.getValue() * completeness));
+    /**
+     * 메인 질문들을 동시에 채점한다 (서로 독립적).
+     */
+    private List<ScoredTopic> scoreTopicsInParallel(ScoringPlan plan) {
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, plan.mains().size()));
+        try {
+            List<CompletableFuture<ScoredTopic>> futures = plan.mains().stream()
+                    .map(mi -> CompletableFuture.supplyAsync(() -> scoreOne(plan, mi), pool))
+                    .toList();
+            return futures.stream().map(CompletableFuture::join).toList();
+        } finally {
+            pool.shutdown();
         }
-        return scaled;
     }
 
-    private MainQuestionScore skippedScore(List<Axis> axes, Question main) {
-        Map<String, Integer> zeros = new HashMap<>();
-        for (Axis axis : axes) {
-            zeros.put(axis.code(), 0);
-        }
-        FeedbackContent content = new FeedbackContent(
-                null,
-                "답변을 건너뛰어 평가할 수 없습니다.",
-                "다음에는 짧게라도 답변을 시도해 보세요.",
-                null,
-                null,
-                List.of()
-        );
-        String shortTitle = main.getContent() == null ? "건너뛴 질문"
-                : main.getContent().substring(0, Math.min(20, main.getContent().length()));
-        return new MainQuestionScore(shortTitle, zeros, content);
+    /**
+     * 한 주제 채점: 판단은 입력/점수 객체에게 위임한다.
+     */
+    private ScoredTopic scoreOne(ScoringPlan plan, ScoringPlan.MainInput mi) {
+        MainQuestionInput in = mi.input();
+
+        MainQuestionScore score = in.isFullySkipped()
+                ? MainQuestionScore.skipped(plan.axes(), in.question())
+                : scoringClient.scoreMainQuestion(plan.axes(), plan.ctx(), in).scaledBy(in.completeness());
+
+        int topicScore = plan.axisSet().weightedScore(score.axisScores());
+        return new ScoredTopic(mi.mainQuestionId(), score, topicScore, in.skippedCount());
     }
 
-    private void saveQuestionScore(Question main, MainQuestionScore score, int topicScore) {
-        main.assignShortTitle(score.shortTitle());
-
-        String contentJson = contentParser.toJson(score.content());
-
-        Feedback feedback = Feedback.create(main, contentJson, topicScore);
-        feedbackRepository.save(feedback);
-
-        for (Map.Entry<String, Integer> e : score.axisScores().entrySet()) {
-            scoreAxisRepository.save(ScoreAxis.create(feedback, e.getKey(), e.getValue()));
-        }
+    private int averageTopicScore(List<ScoredTopic> topics) {
+        if (topics.isEmpty()) return 0;
+        int sum = topics.stream().mapToInt(ScoredTopic::topicScore).sum();
+        return Math.round((float) sum / topics.size());
     }
 }

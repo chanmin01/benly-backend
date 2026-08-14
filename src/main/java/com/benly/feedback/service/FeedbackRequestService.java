@@ -30,21 +30,31 @@ public class FeedbackRequestService {
             throw new BusinessException(FeedbackErrorCode.SESSION_FORBIDDEN);
         }
 
+        startScoring(session);                     // 상태 검증 + SCORING 기록 준비
+        feedbackCommandService.score(sessionId);   // 커밋 후 백그라운드 채점 시작
+        return FeedbackScoringResponse.from(sessionId);
+    }
+
+    /** 세션 상태에 따라 채점을 시작할 수 있는지 판단하고 SCORING 기록을 준비한다. */
+    private void startScoring(Session session) {
         SessionStatus status = session.getStatus();
 
         if (status == SessionStatus.COMPLETED) {
             session.markAnalyzing();
-        } else if (status == SessionStatus.ANALYZING) {
-            SessionFeedback sf = sessionFeedbackRepository.findBySession_Id(sessionId).orElse(null);
-            if (sf != null && (sf.isCompleted() || sf.isScoring())) {
-                throw new BusinessException(FeedbackErrorCode.ALREADY_SCORED);
-            }
-        } else {
-            throw new BusinessException(FeedbackErrorCode.SESSION_NOT_FINISHED);
+            sessionFeedbackRepository.save(SessionFeedback.startScoring(session));
+            return;
         }
-
-        feedbackCommandService.score(sessionId);
-
-        return FeedbackScoringResponse.from(sessionId);
+        if (status == SessionStatus.ANALYZING) {
+            SessionFeedback sf = sessionFeedbackRepository.findBySession_Id(session.getId()).orElse(null);
+            if (sf == null) {
+                sessionFeedbackRepository.save(SessionFeedback.startScoring(session));
+            } else if (sf.isCompleted() || sf.isScoring()) {
+                throw new BusinessException(FeedbackErrorCode.ALREADY_SCORED);
+            } else {
+                sf.resetForRescore();   // 직전 실패(FAILED) → 다시 SCORING
+            }
+            return;
+        }
+        throw new BusinessException(FeedbackErrorCode.SESSION_NOT_FINISHED);
     }
 }
