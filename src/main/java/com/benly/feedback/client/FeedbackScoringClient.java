@@ -95,22 +95,23 @@ public class FeedbackScoringClient {
                         "weak", Map.of("type", "string", "description", "메인 답변에서 아쉬운 점"),
                         "next", Map.of("type", "string", "description", "다음에 개선할 방향"),
                         "weakAxis", Map.of("type", "string", "description", "가장 약한 축에 대한 한 문장 설명"),
-                        "improvedBefore", Map.of("type", "string", "description", "원답변 핵심 요약(before)"),
                         "improvedAfter", Map.of("type", "string", "description", "개선된 모범 답변(after)"),
                         "tails", Map.of(
                                 "type", "array",
                                 "items", tailItemSchema,
-                                "description", "꼬리질문별 피드백 (꼬리 없으면 빈 배열)"
+                                "minItems", input.tails().size(),
+                                "maxItems", input.tails().size(),
+                                "description", "꼬리질문별 피드백 (꼬리질문 수와 정확히 같은 개수, 순서 유지)"
                         )
                 ),
                 "required", List.of("shortTitle", "axisScores", "good", "weak", "next", "weakAxis",
-                        "improvedBefore", "improvedAfter", "tails")
+                        "improvedAfter", "tails")
         );
 
         JsonNode toolInput = callTool(prompt, "score_answer",
                 "면접 답변을 채점하여 축별 점수와 피드백을 반환합니다.", inputSchema, 4000);
 
-        return parseMainScore(axes, toolInput);
+        return parseMainScore(axes, input.tails().size(), input.answer(),toolInput);
     }
 
     /**
@@ -171,7 +172,8 @@ public class FeedbackScoringClient {
         throw new IllegalStateException("채점 응답 파싱 실패: tool_use 블록 없음");
     }
 
-    private MainQuestionScore parseMainScore(List<Axis> axes, JsonNode in) {
+    private MainQuestionScore parseMainScore(List<Axis> axes, int expectedTailCount,
+                                             String mainAnswer, JsonNode in) {
         Map<String, Integer> axisScores = new HashMap<>();
         JsonNode scoresNode = in.path("axisScores");
         for (Axis axis : axes) {
@@ -190,12 +192,17 @@ public class FeedbackScoringClient {
             ));
         }
 
+        if (tails.size() != expectedTailCount) {
+            throw new IllegalStateException(
+                    "꼬리 피드백 개수 불일치: 기대=%d, 실제=%d".formatted(expectedTailCount, tails.size()));
+        }
+
         FeedbackContent content = new FeedbackContent(
                 text(in, "good"),
                 text(in, "weak"),
                 text(in, "next"),
                 text(in, "weakAxis"),
-                new FeedbackContent.ImprovedAnswer(text(in, "improvedBefore"), text(in, "improvedAfter")),
+                new FeedbackContent.ImprovedAnswer(mainAnswer, text(in, "improvedAfter")), // before = 실제 답변
                 tails
         );
 
@@ -209,39 +216,52 @@ public class FeedbackScoringClient {
 
         StringBuilder tailText = new StringBuilder();
         if (input.tails() != null) {
+            int idx = 1;
             for (TailInput t : input.tails()) {
                 tailText.append("""
-                        [꼬리질문 - strategy=%s]
-                        Q: %s
-                        A: %s
-                        """.formatted(nvl(t.strategy()), nvl(t.question()), nvl(t.answer())));
+                    [꼬리질문 %d]
+                    Q: %s
+                    꼬리 답변: %s
+                    """.formatted(idx++, nvl(t.question()), nvl(t.answer())));
             }
         }
 
         return """
-                당신은 %s %s 면접의 숙련된 면접관입니다. (직무: %s)
-                아래 지원자의 답변을 구조화 면접 기준으로 엄격하고 공정하게 채점하세요.
-                
-                [채점 원칙]
-                - 각 평가축을 0~100으로 채점합니다.
-                - 구체적 상황·본인의 기여·실제 행동·정량적 결과가 드러날수록 높게 채점합니다.
-                - 일반론, 모호한 표현, 근거 없는 주장은 낮게 채점합니다.
-                - 일부 답변은 비어 있을 수 있습니다(지원자가 건너뜀). 건너뜀 자체는 감점하지 말고,
-                  실제로 제출된 답변의 품질만 평가하세요. 건너뛰기에 대한 감점은 시스템이 별도로 처리합니다.
-                - 피드백은 지원자가 바로 실천할 수 있도록 구체적으로 작성합니다.
-                - 각 피드백(good/weak/next)은 2~3문장 이내로 간결하게 작성합니다.
-                - 모범답안(improvedAfter)은 4~5문장 이내로 핵심만 작성합니다.
-                - 꼬리질문(tails)의 각 항목도 반드시 채웁니다.
-                
-                [평가축]
-                %s
-                
-                [메인 질문]
-                Q: %s
-                A: %s
-                %s
-                제공된 도구(score_answer)로만 결과를 반환하세요.
-                """.formatted(
+            당신은 %s %s 면접의 숙련된 면접관입니다. (직무: %s)
+            아래 지원자의 답변을 구조화 면접 기준으로 엄격하고 공정하게 채점하세요.
+
+            [채점 원칙]
+            - 각 평가축을 0~100으로 채점합니다.
+            - 구체적 상황·본인의 기여·실제 행동·정량적 결과가 드러날수록 높게 채점합니다.
+            - 일반론, 모호한 표현, 근거 없는 주장은 낮게 채점합니다.
+            - 일부 답변은 비어 있을 수 있습니다(지원자가 건너뜀). 건너뜀 자체는 감점하지 말고,
+              실제로 제출된 답변의 품질만 평가하세요. 건너뛰기에 대한 감점은 시스템이 별도로 처리합니다.
+            - 피드백은 지원자가 바로 실천할 수 있도록 구체적으로 작성합니다.
+            - 각 피드백(good/weak/next)은 2~3문장 이내로 간결하게 작성합니다.
+            - 모범답안(improvedAfter)은 4~5문장 이내로 핵심만 작성합니다.
+
+            [평가 범위 분리 — 매우 중요]
+            - shortTitle, good, weak, next, weakAxis, improvedAfter 는 오직 아래 [메인 질문]의
+              '메인 답변'만 근거로 작성합니다. 꼬리질문의 답변에서 나온 내용(구체적 사례·수치·기술명 등)을
+              메인 평가에 절대 끌어오지 마세요. 메인 답변에 없는 내용은 '언급되지 않았다'고 평가해야 합니다.
+            - shortTitle 은 [메인 질문]의 '메인 질문' 문장만 요약한 제목입니다.
+              메인 답변과 꼬리질문 내용(사례·수치·기술명 등)은 절대 반영하지 마세요.
+              15자 내외의 명사구로, 질문이 묻는 주제 자체를 나타냅니다.
+            - tails 배열의 각 항목은 '해당 꼬리질문의 답변'만 근거로 평가합니다. 다른 꼬리나 메인 답변의
+              내용을 섞지 마세요(메인 질문은 맥락 파악용으로만 참고).
+            - 단, axisScores(축 점수)만은 이 주제 전체(메인+꼬리)를 종합해 매깁니다.
+
+            [평가축]
+            %s
+
+            [메인 질문]
+            Q: %s
+            메인 답변: %s
+
+            [꼬리질문들 — 각 항목을 개별적으로 평가]
+            %s
+            제공된 도구(score_answer)로만 결과를 반환하세요.
+            """.formatted(
                 nvl(ctx.companyType()), nvl(ctx.stage()), nvl(ctx.jobTitle()),
                 axisGuide,
                 nvl(input.question()), nvl(input.answer()),

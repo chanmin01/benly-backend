@@ -70,8 +70,8 @@ class FeedbackReportAssemblerTest {
         // when
         List<Card> cards = assembler.assembleCards(
                 List.of(fb),
-                List.of(m, t1, t2),
-                List.of(answer(m, "메인답"), answer(t1, "꼬리1답"), answer(t2, "꼬리2답")));
+                List.of(m, t2, t1),                          // ← 역순으로 전달
+                List.of(answer(t2, "꼬리2답"), answer(t1, "꼬리1답"), answer(m, "메인답")));
 
         // then
         assertThat(cards).hasSize(1);
