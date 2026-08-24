@@ -1,7 +1,11 @@
 package com.benly.feedback.repository;
 
+import com.benly.feedback.entity.FeedbackStatus;
 import com.benly.feedback.entity.SessionFeedback;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -10,4 +14,22 @@ public interface SessionFeedbackRepository extends JpaRepository<SessionFeedback
     Optional<SessionFeedback> findBySession_Id(Long sessionId);
 
     boolean existsBySession_Id(Long sessionId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            UPDATE SessionFeedback sf
+               SET sf.status = :to,
+                   sf.totalScore = null,
+                   sf.summary = null,
+                   sf.keyCoaching = null,
+                   sf.coachingAction = null,
+                   sf.fillerWordCount = null,
+                   sf.fillerWordNote = null,
+                   sf.speechSpeed = null,
+                   sf.speechSpeedNote = null
+             WHERE sf.session.id = :sessionId AND sf.status = :from
+            """)
+    int restartScoring(@Param("sessionId") Long sessionId,
+                       @Param("from") FeedbackStatus from,
+                       @Param("to") FeedbackStatus to);
 }
