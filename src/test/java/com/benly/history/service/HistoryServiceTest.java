@@ -1,10 +1,10 @@
 package com.benly.history.service;
 
+import com.benly.feedback.entity.FeedbackStatus;
 import com.benly.global.exception.BusinessException;
 import com.benly.history.dto.SessionHistoryResponse;
 import com.benly.history.exception.HistoryErrorCode;
 import com.benly.history.repository.SessionHistoryRepository;
-import com.benly.session.entity.SessionStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,19 +32,18 @@ public class HistoryServiceTest {
     @InjectMocks
     private HistoryService historyService;
 
+    private static final FeedbackStatus SCORED = FeedbackStatus.COMPLETED;
+
     @Test
     @DisplayName("필터 없이 조회하면 전체 완료 세션과 통계를 반환한다")
     void getMySessionWithoutFilter() {
         // given
-        given(sessionHistoryRepository
-                .findByUser_IdAndStatusOrderByCreatedAtDesc(1L, SessionStatus.COMPLETED))
+        given(sessionHistoryRepository.findScoredSessions(1L, SCORED))
                 .willReturn(List.of());
-        given(sessionHistoryRepository
-                .countByUser_IdAndStatus(1L, SessionStatus.COMPLETED))
+        given(sessionHistoryRepository.countScored(1L, SCORED))
                 .willReturn(12L);
         given(sessionHistoryRepository
-                .countByUser_IdAndStatusAndCreatedAtGreaterThanEqual(
-                        eq(1L), eq(SessionStatus.COMPLETED), any(LocalDateTime.class)))
+                .countScoredSince(eq(1L), eq(SCORED), any(LocalDateTime.class)))
                 .willReturn(3L);
 
         // when
@@ -54,23 +53,19 @@ public class HistoryServiceTest {
         assertThat(response.totalCount()).isEqualTo(12L);
         assertThat(response.weekCount()).isEqualTo(3L);
         verify(sessionHistoryRepository, never())
-                .findByUser_IdAndStatusAndCompanyTypeOrderByCreatedAtDesc(any(), any(), any());
+                .findScoredSessionsByCompany(any(), any(), any());
     }
 
     @Test
     @DisplayName("유효한 기업유형 필터로 조회하면 필터 조회 메서드를 호출한다")
     void getMySessionsWithValidFilter() {
         // given
-        given(sessionHistoryRepository
-                .findByUser_IdAndStatusAndCompanyTypeOrderByCreatedAtDesc(
-                        1L, SessionStatus.COMPLETED, "SERVICE"))
+        given(sessionHistoryRepository.findScoredSessionsByCompany(1L, "SERVICE", SCORED))
                 .willReturn(List.of());
-        given(sessionHistoryRepository
-                .countByUser_IdAndStatus(1L, SessionStatus.COMPLETED))
+        given(sessionHistoryRepository.countScored(1L, SCORED))
                 .willReturn(5L);
         given(sessionHistoryRepository
-                .countByUser_IdAndStatusAndCreatedAtGreaterThanEqual(
-                        eq(1L), eq(SessionStatus.COMPLETED), any(LocalDateTime.class)))
+                .countScoredSince(eq(1L), eq(SCORED), any(LocalDateTime.class)))
                 .willReturn(1L);
 
         // when
@@ -79,8 +74,7 @@ public class HistoryServiceTest {
         // then
         assertThat(response.totalCount()).isEqualTo(5L);
         verify(sessionHistoryRepository)
-                .findByUser_IdAndStatusAndCompanyTypeOrderByCreatedAtDesc(
-                        1L, SessionStatus.COMPLETED, "SERVICE");
+                .findScoredSessionsByCompany(1L, "SERVICE", SCORED);
     }
 
     @Test
@@ -92,9 +86,8 @@ public class HistoryServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", HistoryErrorCode.INVALID_COMPANY_TYPE);
 
         verify(sessionHistoryRepository, never())
-                .findByUser_IdAndStatusAndCompanyTypeOrderByCreatedAtDesc(any(), any(), any());
+                .findScoredSessionsByCompany(any(), any(), any());
         verify(sessionHistoryRepository, never())
-                .findByUser_IdAndStatusOrderByCreatedAtDesc(any(), any());
+                .findScoredSessions(any(), any());
     }
-
 }

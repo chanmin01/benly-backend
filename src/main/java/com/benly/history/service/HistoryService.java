@@ -1,12 +1,12 @@
 package com.benly.history.service;
 
+import com.benly.feedback.entity.FeedbackStatus;
 import com.benly.global.exception.BusinessException;
 import com.benly.history.dto.SessionHistoryResponse;
 import com.benly.history.exception.HistoryErrorCode;
 import com.benly.history.repository.SessionHistoryRepository;
 import com.benly.session.entity.CompanyType;
 import com.benly.session.entity.Session;
-import com.benly.session.entity.SessionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,29 +21,26 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class HistoryService {
 
-    private static final SessionStatus COMPLETED = SessionStatus.COMPLETED;
+    // 히스토리 기준: 세션 상태가 아니라 "채점 완료" 여부
+    private static final FeedbackStatus SCORED = FeedbackStatus.COMPLETED;
 
     private final SessionHistoryRepository sessionHistoryRepository;
 
     public SessionHistoryResponse getMySessions(Long userId, String companyType) {
-        List<Session> sessions = findCompletedSessions(userId, companyType);
+        List<Session> sessions = findScoredSessions(userId, companyType);
 
-        long totalCount = sessionHistoryRepository.countByUser_IdAndStatus(userId, COMPLETED);
-        long weekCount = sessionHistoryRepository
-                .countByUser_IdAndStatusAndCreatedAtGreaterThanEqual(userId, COMPLETED, thisWeekStart());
+        long totalCount = sessionHistoryRepository.countScored(userId, SCORED);
+        long weekCount = sessionHistoryRepository.countScoredSince(userId, SCORED, thisWeekStart());
 
         return SessionHistoryResponse.of(totalCount, weekCount, sessions);
-
     }
 
-    private List<Session> findCompletedSessions(Long userId, String companyType) {
+    private List<Session> findScoredSessions(Long userId, String companyType) {
         if (companyType == null || companyType.isBlank()) {
-            return sessionHistoryRepository
-                    .findByUser_IdAndStatusOrderByCreatedAtDesc(userId, COMPLETED);
+            return sessionHistoryRepository.findScoredSessions(userId, SCORED);
         }
         String validated = validateCompanyType(companyType);
-        return sessionHistoryRepository
-                .findByUser_IdAndStatusAndCompanyTypeOrderByCreatedAtDesc(userId, COMPLETED, validated);
+        return sessionHistoryRepository.findScoredSessionsByCompany(userId, validated, SCORED);
     }
 
     private String validateCompanyType(String companyType) {

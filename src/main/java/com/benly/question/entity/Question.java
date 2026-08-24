@@ -65,4 +65,13 @@ public class Question extends BaseTimeEntity {
     public static Question createFollowUp(Session session, Question parent, Integer seq, String content, QuestionSourceType sourceType) {
         return new  Question(session, parent, "Follow_UP", null, seq, content, null, sourceType);
     }
+
+    /** 채점 시 카드 제목(요약)을 채운다. */
+    public void assignShortTitle(String shortTitle) {
+        this.shortTitle = shortTitle;
+    }
+
+    public boolean isMain() {
+        return this.parent == null;
+    }
 }

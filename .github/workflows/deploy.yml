@@ -52,7 +52,11 @@ jobs:
               "JWT_SECRET=$(aws ssm get-parameter --name /benly/prod/jwt-secret --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
               "DB_URL=$(aws ssm get-parameter --name /benly/prod/db-url --query Parameter.Value --output text --region ap-northeast-2)",
               "DB_PASSWORD=$(aws ssm get-parameter --name /benly/prod/db-password --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
-              "docker run -d -p 8080:8080 --name benly -e JWT_SECRET=\"$JWT_SECRET\" -e DB_URL=\"$DB_URL\" -e DB_PASSWORD=\"$DB_PASSWORD\" 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest"
+              "KAKAO_CLIENT_ID=$(aws ssm get-parameter --name /benly/prod/kakao-client-id --query Parameter.Value --output text --region ap-northeast-2)",
+              "S3_BUCKET=$(aws ssm get-parameter --name /benly/prod/s3-bucket --query Parameter.Value --output text --region ap-northeast-2)",
+              "CLAUDE_API_KEY=$(aws ssm get-parameter --name /benly/prod/claude-api-key --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
+              "OPENAI_API_KEY=$(aws ssm get-parameter --name /benly/prod/openai-api-key --with-decryption --query Parameter.Value --output text --region ap-northeast-2)",
+              "docker run -d -p 8080:8080 --name benly -e JWT_SECRET=\"$JWT_SECRET\" -e DB_URL=\"$DB_URL\" -e DB_PASSWORD=\"$DB_PASSWORD\" -e KAKAO_CLIENT_ID=\"$KAKAO_CLIENT_ID\" -e S3_BUCKET=\"$S3_BUCKET\" -e CLAUDE_API_KEY=\"$CLAUDE_API_KEY\" -e OPENAI_API_KEY=\"$OPENAI_API_KEY\" 421085493505.dkr.ecr.ap-northeast-2.amazonaws.com/benly-backend:latest"
             ]}' \
             --region ap-northeast-2 \
             --query "Command.CommandId" --output text)
