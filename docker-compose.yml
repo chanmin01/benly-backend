@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: benly-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: benly1234
+      MYSQL_DATABASE: benly
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - benly-mysql-data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+volumes:
+  benly-mysql-data:
