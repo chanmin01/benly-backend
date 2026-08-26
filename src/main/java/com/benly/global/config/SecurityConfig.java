@@ -31,6 +31,7 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                "/api/v1/health",
                                 "/api/v1/auth/kakao/login",
                                 "/api/v1/auth/token/refresh",
                                 "/swagger-ui/**",
