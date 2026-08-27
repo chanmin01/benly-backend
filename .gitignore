@@ -38,3 +38,7 @@ out/
 
 # Local Environment Properties
 **/application-local.properties
+
+# Mac OS
+.DS_Store
+**/.DS_Store
