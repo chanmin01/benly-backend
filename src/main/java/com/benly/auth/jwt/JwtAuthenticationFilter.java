@@ -36,6 +36,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         try {
+            // JWT Bearer 검증 로직만 try 블록에 위치시킴
             String token = resolveToken(request);
 
             if (token != null && jwtProvider.isValid(token)) {
@@ -50,12 +51,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
-
-            filterChain.doFilter(request, response);
-
         } catch (ExpiredJwtException e) {
-            setErrorResponse(response, "토큰이 만료되었습니다. (EXPIRED_TOKEN)");
+            // 액세스 토큰 만료 시 에러를 응답하고 return을 호출하여 필터 체인을 즉시 중단
+            setErrorResponse(response, "액세스 토큰이 만료되었습니다. (EXPIRED_ACCESS_TOKEN)");
+            return;
         }
+
+        // try-catch 블록 밖에서 호출하여, 후속 컨트롤러/서비스에서 발생한 예외를 필터가 가로채지 않도록 함
+        filterChain.doFilter(request, response);
     }
 
     private void setErrorResponse(HttpServletResponse response, String message) throws IOException {
