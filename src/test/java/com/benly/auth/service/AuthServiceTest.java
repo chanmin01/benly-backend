@@ -147,14 +147,15 @@ public class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("로그인 시 유저 행을 잠근 뒤 기존 토큰을 정리하고 새로 발급한다")
-    void loginAcquiresLockAndReplacesToken() {
+    @DisplayName("기존 토큰이 없으면 유저 행을 잠근 뒤 새 토큰을 저장한다")
+    void loginAcquiresLockAndSavesTokenWhenNoneExists() {
         // given
         User user = User.of("12345", "홍길동");
         given(kakaoOAuthClient.getKakaoUser("code"))
                 .willReturn(new KakaoUserInfo("12345", "홍길동"));
         given(userRepository.findByKakaoId("12345")).willReturn(Optional.of(user));
         given(userRepository.findByIdForUpdate(any())).willReturn(Optional.of(user));
+        given(refreshTokenRepository.findByUserId(any())).willReturn(Optional.empty()); // 기존 토큰 없음
         given(jwtProvider.createAccessToken(any())).willReturn("access-token");
         given(jwtProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
@@ -162,10 +163,35 @@ public class AuthServiceTest {
         // when
         authService.kakaoLogin(new KakaoLoginRequest("code", true));
 
-        // then — 락 조회 + 기존 토큰 삭제 후 저장까지 호출됐는지
+        // then — 락 조회 + 기존 토큰 조회 후 새로 저장
         verify(userRepository).findByIdForUpdate(user.getId());
-        verify(refreshTokenRepository).deleteByUserId(user.getId());
+        verify(refreshTokenRepository).findByUserId(user.getId());
         verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("재로그인 시 기존 토큰을 갱신하고 새로 INSERT하지 않는다")
+    void loginUpdatesExistingTokenOnRelogin() {
+        // given
+        User user = User.of("12345", "홍길동");
+        RefreshToken existingToken =
+                RefreshToken.of(user, "old-refresh", LocalDateTime.now().plusWeeks(2));
+        given(kakaoOAuthClient.getKakaoUser("code"))
+                .willReturn(new KakaoUserInfo("12345", "홍길동"));
+        given(userRepository.findByKakaoId("12345")).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(any())).willReturn(Optional.of(user));
+        given(refreshTokenRepository.findByUserId(any()))
+                .willReturn(Optional.of(existingToken));   // 기존 토큰 있음
+        given(jwtProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtProvider.createRefreshToken(any())).willReturn("new-refresh");
+        given(jwtProvider.getRefreshTokenExpiry()).willReturn(LocalDateTime.now().plusWeeks(2));
+
+        // when
+        authService.kakaoLogin(new KakaoLoginRequest("code", true));
+
+        // then — 기존 토큰이 갱신되고, 새 INSERT(save)는 없어야 함 (중복키 500 회귀 방지)
+        assertThat(existingToken.getRefreshToken()).isEqualTo("new-refresh");
+        verify(refreshTokenRepository, never()).save(any());
     }
 
     @Test
