@@ -65,8 +65,10 @@ public class JwtProvider {
         try {
             parse(token);
             return true;
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            throw e;
         } catch (Exception e) {
-            return false;
+            return false; // 그 외의 변조/손상된 토큰은 false 처리
         }
     }
 
@@ -80,4 +82,6 @@ public class JwtProvider {
     public LocalDateTime getRefreshTokenExpiry() {
         return LocalDateTime.now().plus(refreshTokenValidity, java.time.temporal.ChronoUnit.MILLIS);
     }
+
+
 }
