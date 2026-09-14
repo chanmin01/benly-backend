@@ -60,7 +60,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "https://meetdevoir.com",
-                "https://www.meetdevoir.com"
+                "https://www.meetdevoir.com",
+                "https://devoir-seven.vercel.app"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
