@@ -42,21 +42,25 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
         this.clientSecret = clientSecret;
     }
 
-    @Override
     public KakaoUserInfo getKakaoUser(String authorizationCode) {
+        log.info("[KAKAO] getKakaoUser 진입, code앞8자리={}",
+                authorizationCode != null ? authorizationCode.substring(0, Math.min(8, authorizationCode.length())) : "null");
         try {
             String accessToken = requestAccessToken(authorizationCode);
             KakaoUserResponse user = requestKakaoUser(accessToken);
             if (user == null || user.id() == null) {
+                log.error("[KAKAO] userinfo 비어있음: {}", user);
                 throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
             }
             return new KakaoUserInfo(String.valueOf(user.id()), extractNickname(user));
         } catch (RestClientResponseException e) {
-            log.error("[KAKAO] token/userinfo fail: status={}, body={}",
-                    e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("[KAKAO] token/userinfo fail: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
         } catch (RestClientException e) {
             log.error("[KAKAO] call fail (no response)", e);
+            throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
+        } catch (Exception e) {                       // ← 그 외 전부 잡기
+            log.error("[KAKAO] unexpected", e);
             throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
         }
     }
@@ -87,6 +91,7 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
                 .body(KakaoTokenResponse.class);
 
         if (response == null || response.accessToken() == null) {
+            log.error("[KAKAO] token 응답에 access_token 없음: {}", response);
             throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
         }
 
