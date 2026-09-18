@@ -13,6 +13,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Component
@@ -50,7 +51,12 @@ public class KakaoOAuthClientImpl implements KakaoOAuthClient {
                 throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
             }
             return new KakaoUserInfo(String.valueOf(user.id()), extractNickname(user));
+        } catch (RestClientResponseException e) {
+            log.error("[KAKAO] token/userinfo fail: status={}, body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
         } catch (RestClientException e) {
+            log.error("[KAKAO] call fail (no response)", e);
             throw new BusinessException(AuthErrorCode.KAKAO_AUTH_FAILED);
         }
     }
