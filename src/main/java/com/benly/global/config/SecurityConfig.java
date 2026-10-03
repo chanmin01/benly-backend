@@ -3,6 +3,7 @@ package com.benly.global.config;
 import com.benly.auth.jwt.JwtAuthenticationEntryPoint;
 import com.benly.auth.jwt.JwtAuthenticationFilter;
 import com.benly.auth.jwt.JwtProvider;
+import com.benly.global.security.PublicPaths;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -36,10 +37,9 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(PublicPaths.AUTH).permitAll()
                         .requestMatchers(
                                 "/api/v1/health",
-                                "/api/v1/auth/kakao/login",
-                                "/api/v1/auth/token/refresh",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"

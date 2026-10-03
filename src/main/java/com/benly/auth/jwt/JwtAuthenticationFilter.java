@@ -10,10 +10,12 @@ import lombok.NonNull;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -23,6 +25,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
+    private static final List<String> EXCLUDED_PATHS = List.of(
+            "/api/v1/auth/kakao/login",
+            "/api/v1/auth/token/refresh"
+    );
 
     public JwtAuthenticationFilter(JwtProvider jwtProvider) {
         this.jwtProvider = jwtProvider;
@@ -59,6 +67,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // try-catch 블록 밖에서 호출하여, 후속 컨트롤러/서비스에서 발생한 예외를 필터가 가로채지 않도록 함
         filterChain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return EXCLUDED_PATHS.stream()
+                .anyMatch(pattern -> PATH_MATCHER.match(pattern, path));
     }
 
     private void setErrorResponse(HttpServletResponse response, String message) throws IOException {
