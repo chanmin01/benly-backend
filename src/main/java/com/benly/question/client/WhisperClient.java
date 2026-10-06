@@ -17,6 +17,10 @@ import java.io.IOException;
 @Slf4j
 @Component
 public class WhisperClient {
+
+    /** Whisper API 자체 업로드 상한 (25MB) */
+    private static final long MAX_AUDIO_BYTES = 25L * 1024 * 1024;
+
     private final RestClient restClient;
     private final String apiKey;
     private final String apiUrl;
@@ -29,7 +33,8 @@ public class WhisperClient {
     ) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(60000);   // 음성이라 좀 길게
+        // 긴 오디오는 전사에 시간이 더 걸린다. 3분 분량에서 60초로는 부족한 경우가 있어 상향.
+        factory.setReadTimeout(120000);
 
         this.restClient = RestClient.builder().requestFactory(factory).build();
         this.apiKey = apiKey;
@@ -38,6 +43,13 @@ public class WhisperClient {
     }
 
     public String transcribe(MultipartFile audioFile) {
+        // Whisper 상한을 넘는 파일은 호출 전에 걸러낸다.
+        // 넘긴 채로 호출하면 OpenAI가 413을 주는데, 그 전에 파일 전송에만 시간을 다 쓴다.
+        if (audioFile.getSize() > MAX_AUDIO_BYTES) {
+            log.warn("오디오 용량 초과: {} bytes", audioFile.getSize());
+            throw new IllegalStateException("오디오 파일이 너무 큽니다.");
+        }
+
         try {
             // multipart/form-data로 파일 전송
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
